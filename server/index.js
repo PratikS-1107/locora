@@ -11,6 +11,8 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
+const router = express.Router();
+
 // Haversine Distance Calculation (km)
 const calculateHaversineDistance = (lat1, lon1, lat2, lon2) => {
   const R = 6371; // Earth radius in km
@@ -25,7 +27,7 @@ const calculateHaversineDistance = (lat1, lon1, lat2, lon2) => {
 };
 
 // GET /api/places/photo - Stream/Redirect official Google Places Photo Media
-app.get('/api/places/photo', async (req, res) => {
+router.get('/places/photo', async (req, res) => {
   try {
     const { photo_reference } = req.query;
     const googleApiKey = process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
@@ -43,7 +45,7 @@ app.get('/api/places/photo', async (req, res) => {
 });
 
 // POST /api/places/reverse-geocode - Reverse geocode lat/lng to city, state, country via Google Maps API
-app.post('/api/places/reverse-geocode', async (req, res) => {
+router.post('/places/reverse-geocode', async (req, res) => {
   try {
     const lat = req.body?.latitude ?? req.body?.lat;
     const lng = req.body?.longitude ?? req.body?.lng;
@@ -650,7 +652,7 @@ const formatRecommendation = (place, category, enrichment = {}, source = 'real_p
 });
 
 // POST /api/ai/recommendations
-app.post('/api/ai/recommendations', async (req, res) => {
+router.post('/ai/recommendations', async (req, res) => {
   try {
     const { location, availableTime, itinerary, budget, preferences, category } = req.body || {};
 
@@ -1050,7 +1052,7 @@ const VERIFIED_BASE_EXPERIENCES = [
 ];
 
 // POST /api/places/explore-search - Query verified destination places with strict place validation
-app.post('/api/places/explore-search', async (req, res) => {
+router.post('/places/explore-search', async (req, res) => {
   try {
     const { query = '', category = 'All', price = 'Any', type = 'All', limit = 20 } = req.body || {};
 
@@ -1109,7 +1111,7 @@ app.post('/api/places/explore-search', async (req, res) => {
 });
 
 // GET /api/places/explore-search (Support GET as well)
-app.get('/api/places/explore-search', async (req, res) => {
+router.get('/places/explore-search', async (req, res) => {
   try {
     const { query = '', category = 'All', limit = 20 } = req.query || {};
     const q = (query || '').trim().toLowerCase();
@@ -1139,9 +1141,12 @@ app.get('/api/places/explore-search', async (req, res) => {
   }
 });
 
-app.get('/api/health', (req, res) => {
+router.get('/health', (req, res) => {
   res.json({ status: 'ok', server: 'Locora Backend Express API' });
 });
+
+app.use('/api', router);
+app.use('/', router);
 
 export default app;
 
