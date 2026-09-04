@@ -425,7 +425,7 @@ const Discover = () => {
             <div>
               <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Remaining Budget</div>
               <div style={{ fontWeight: 700, fontSize: '0.975rem', color: 'var(--primary)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <IndianRupee size={14} />
+
                 {context.remainingBudget !== null ? `₹${context.remainingBudget.toLocaleString()}` : 'Budget not set'}
               </div>
             </div>
