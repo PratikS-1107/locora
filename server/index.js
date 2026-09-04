@@ -1056,6 +1056,8 @@ app.post('/api/places/explore-search', async (req, res) => {
 
     const q = (query || '').trim().toLowerCase();
     const cat = (category || 'All').trim().toLowerCase();
+    const t = (type || 'All').trim().toLowerCase();
+    const p = (price || 'Any').trim().toLowerCase();
 
     // 1. Filter against verified base experience repository
     let results = [...VERIFIED_BASE_EXPERIENCES];
@@ -1066,26 +1068,26 @@ app.post('/api/places/explore-search', async (req, res) => {
         const cityMatch = item.location.city.toLowerCase().includes(q);
         const countryMatch = item.location.country.toLowerCase().includes(q);
         const descMatch = item.description.toLowerCase().includes(q);
-        const tagMatch = (item.tags || []).some(t => t.toLowerCase().includes(q));
+        const tagMatch = (item.tags || []).some(tag => tag.toLowerCase().includes(q));
         const addressMatch = (item.address || '').toLowerCase().includes(q);
         return nameMatch || cityMatch || countryMatch || descMatch || tagMatch || addressMatch;
       });
     }
 
     if (cat && cat !== 'all') {
-      results = results.filter(item => item.category.toLowerCase() === cat);
+      results = results.filter(item => (item.category || '').toLowerCase() === cat);
     }
 
-    if (type && type !== 'all') {
-      results = results.filter(item => item.type.toLowerCase() === type.toLowerCase());
+    if (t && t !== 'all') {
+      results = results.filter(item => (item.type || '').toLowerCase() === t);
     }
 
-    if (price && price !== 'any') {
-      if (price.toLowerCase() === 'free') {
+    if (p && p !== 'any') {
+      if (p === 'free') {
         results = results.filter(item => item.priceLevel === 0 || item.priceDisplay === 'Free');
-      } else if (price.toLowerCase() === 'budget') {
+      } else if (p === 'budget') {
         results = results.filter(item => item.priceLevel === 1 || item.priceDisplay === 'Free');
-      } else if (price.toLowerCase() === 'moderate') {
+      } else if (p === 'moderate') {
         results = results.filter(item => item.priceLevel === 2 || item.priceDisplay === 'Price varies');
       }
     }
@@ -1141,31 +1143,35 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', server: 'Locora Backend Express API' });
 });
 
-const server = app.listen(PORT);
+export default app;
 
-server.on('listening', () => {
-  console.log(`Locora Server running on http://localhost:${PORT}`);
-});
+if (!process.env.VERCEL) {
+  const server = app.listen(PORT);
 
-server.on('error', async (err) => {
-  if (err.code === 'EADDRINUSE') {
-    try {
-      const checkRes = await fetch(`http://localhost:${PORT}/api/health`);
-      if (checkRes.ok) {
-        const data = await checkRes.json();
-        if (data && data.server === 'Locora Backend Express API') {
-          console.log(`[SERVER INFO] Locora Backend is already running on http://localhost:${PORT}. Reusing active backend instance.`);
-          setInterval(() => { }, 3600000); // Keep process active so concurrently does not kill Vite
-          return;
+  server.on('listening', () => {
+    console.log(`Locora Server running on http://localhost:${PORT}`);
+  });
+
+  server.on('error', async (err) => {
+    if (err.code === 'EADDRINUSE') {
+      try {
+        const checkRes = await fetch(`http://localhost:${PORT}/api/health`);
+        if (checkRes.ok) {
+          const data = await checkRes.json();
+          if (data && data.server === 'Locora Backend Express API') {
+            console.log(`[SERVER INFO] Locora Backend is already running on http://localhost:${PORT}. Reusing active backend instance.`);
+            setInterval(() => { }, 3600000); // Keep process active so concurrently does not kill Vite
+            return;
+          }
         }
-      }
-    } catch (_) { }
+      } catch (_) { }
 
-    console.error(`[SERVER ERROR] Port ${PORT} is already in use by another process.`);
-    console.error(`[SERVER ERROR] Please stop the process running on port ${PORT} to start a new server instance.`);
-    process.exit(1);
-  } else {
-    console.error('[SERVER ERROR]', err);
-    process.exit(1);
-  }
-});
+      console.error(`[SERVER ERROR] Port ${PORT} is already in use by another process.`);
+      console.error(`[SERVER ERROR] Please stop the process running on port ${PORT} to start a new server instance.`);
+      process.exit(1);
+    } else {
+      console.error('[SERVER ERROR]', err);
+      process.exit(1);
+    }
+  });
+}
