@@ -515,7 +515,7 @@ Provide clear copy-paste setup instructions.
 Include:
 
 ```bash
-git clone <YOUR_REPOSITORY_URL>
+git clone https://github.com/PratikS-1107/locora
 cd locora
 npm install
 npm run dev
