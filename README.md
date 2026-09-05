@@ -519,3 +519,18 @@ git clone <YOUR_REPOSITORY_URL>
 cd locora
 npm install
 npm run dev
+```
+
+# 👥 Team Locora
+
+## Meet the Team
+
+| # | Team Member | Role | GitHub |
+|---|---|---|---|
+| 1 | **Pratik Satpute** | Full Stack Developer | [@YOUR_GITHUB_ID](https://github.com/PratikS-1107) |
+| 2 | **Aastha Vyas** | UI/UX Designer | [@GITHUB_ID](https://github.com/aasthavyas704-hub) |
+| 3 | **Samruddhi Shewale** | Developer | [@GITHUB_ID](https://github.com/samruddhishewale-2314) |
+| 4 | **Arnav Sawant** | Developer | [@GITHUB_ID](https://github.com/GITHUB_ID) |
+| 5 | **Pushkraj Shirke** | Developer | [@GITHUB_ID](https://github.com/GITHUB_ID) |
+
+---
