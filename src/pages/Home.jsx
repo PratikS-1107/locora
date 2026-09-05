@@ -628,7 +628,7 @@ const Home = () => {
               color: 'var(--text-muted)',
               margin: 0
             }}>
-              © 2024 Locora. Curating worlds for the discerning explorer.
+              © 2026 Locora. Curating worlds for the discerning explorer.
             </p>
           </div>
 
