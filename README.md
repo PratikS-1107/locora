@@ -528,8 +528,8 @@ npm run dev
 | # | Team Member | Role | GitHub |
 |---|---|---|---|
 | 1 | **Pratik Satpute** | Full Stack Developer | [@PratikS-1107](https://github.com/PratikS-1107) |
-| 2 | **Aastha Vyas** | UI/UX Designer | [@aasthavyas704-hub](https://github.com/aasthavyas704-hub) |
-| 3 | **Samruddhi Shewale** | Developer | [@samruddhishewale-2314](https://github.com/samruddhishewale-2314) |
+| 2 | **Aastha Vyas** | Web Developer | [@aasthavyas704-hub](https://github.com/aasthavyas704-hub) |
+| 3 | **Samruddhi Shewale** | UI/UX Designer | [@samruddhishewale-2314](https://github.com/samruddhishewale-2314) |
 | 4 | **Arnav Sawant** | Developer | [@GITHUB_ID](https://github.com/GITHUB_ID) |
 | 5 | **Pushkraj Shirke** | Developer | [@GITHUB_ID](https://github.com/GITHUB_ID) |
 
