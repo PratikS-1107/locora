@@ -27,31 +27,56 @@ Do NOT overclaim. Only describe functionality that actually exists in the reposi
 ## ✨ WHY LOCORA?
 ==================================================
 
-Create a strong product-focused section explaining the problem Locora addresses.
+Travel plans don't always go exactly as expected.
 
-Use examples such as:
-- free time before check-in
-- gaps between planned activities
-- an unexpected free afternoon
-- limited remaining budget
-- wanting a more local or cultural experience
+You might have:
 
-Explain the concept using a clean visual flow:
+- ⏱️ A few hours before check-in
+- 🗓️ Free time between planned activities
+- 💰 A limited remaining budget
+- 📍 An unfamiliar location
+- 🎭 A desire for authentic local or cultural experiences
 
-Current Location
-       ↓
-Available Time
-       ↓
-Trip / Itinerary Context
-       ↓
-Remaining Budget
-       ↓
-Interests & Preferences
-       ↓
-AI-Powered Recommendations
-       ↓
-Relevant Local Experiences
+Locora turns those gaps into opportunities.
 
+### 🧠 Context-Aware Discovery
+
+```text
+┌──────────────────────┐
+│   Current Location   │
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│    Available Time    │
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│  Itinerary Context   │
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│   Remaining Budget   │
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│     Interests        │
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│    Gemini AI Layer   │
+│   Recommendation     │
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│ Relevant Experiences │
+└──────────────────────┘
+```
 Explain the product philosophy:
 
 Traditional travel platforms often answer:
@@ -253,6 +278,7 @@ Do not claim navigation behavior that is not implemented.
 Create a clean architecture diagram.
 
 Use a structure similar to:
+```text
 
 ┌──────────────────────────────┐
 │          Locora UI           │
@@ -281,6 +307,8 @@ Use a structure similar to:
                  │ Discovery & │
                  │ Recommend.  │
                  └─────────────┘
+
+```
 
 IMPORTANT:
 Adjust this diagram to match the actual repository.
@@ -336,7 +364,7 @@ Create a concise data model section.
 Show the actual high-level relationships.
 
 For example:
-
+```text
 User
  │
  ├── Profile
@@ -354,6 +382,8 @@ User
  ├── Travel Check-ins
  │
  └── Achievements
+
+```
 
 Only include entities that actually exist.
 
@@ -388,6 +418,8 @@ Mention actual mechanisms such as:
 
 Include a conceptual access model:
 
+```text
+
 Public Trips
     ↓
 Publicly discoverable
@@ -403,6 +435,8 @@ Owner access
 User Profile
     ↓
 Profile owner access
+
+```
 
 Only make claims that match the actual RLS policies.
 
