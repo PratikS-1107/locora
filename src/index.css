@@ -436,6 +436,11 @@ button {
   color: var(--text-muted);
 }
 
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  cursor: pointer;
+}
+
 /* Badges & Tags (Reserved for compact metadata & categories) */
 .badge {
   display: inline-flex;

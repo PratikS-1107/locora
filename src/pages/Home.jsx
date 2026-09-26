@@ -194,47 +194,7 @@ const Home = () => {
             Design deeply personal, premium travel experiences. From untamed wilderness to refined cultural capitals, orchestrate your next masterpiece.
           </p>
 
-          {/* Premium Travel Discovery Control Bar */}
-          <div style={{
-            width: '100%',
-            maxWidth: '680px',
-            background: 'rgba(14, 20, 34, 0.82)',
-            backdropFilter: 'blur(16px)',
-            WebkitBackdropFilter: 'blur(16px)',
-            border: '1px solid rgba(255, 255, 255, 0.14)',
-            borderRadius: '8px',
-            padding: '6px 8px 6px 16px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            marginBottom: '28px',
-            boxShadow: '0 12px 36px rgba(0, 0, 0, 0.55)',
-            flexWrap: 'wrap'
-          }}>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: '1 1 240px' }}>
-              <Search size={18} style={{ color: 'rgba(255, 255, 255, 0.5)', flexShrink: 0 }} />
-              <input
-                type="text"
-                placeholder="Where is your next chapter?"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  outline: 'none',
-                  color: '#ffffff',
-                  fontSize: '0.9rem',
-                  width: '100%',
-                  fontFamily: 'var(--font-body)'
-                }}
-              />
-            </div>
-
-
-
-          </div>
+          
 
           {/* Primary Action Buttons */}
           <div style={{ display: 'flex', gap: '14px', justifyContent: 'center', flexWrap: 'wrap' }}>
