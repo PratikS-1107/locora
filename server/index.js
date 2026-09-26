@@ -137,90 +137,90 @@ router.post('/places/autocomplete', async (req, res) => {
       return res.json({ success: true, predictions: [] });
     }
 
-    const googleApiKey = process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
+    const googleApiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY;
 
-    if (googleApiKey && googleApiKey !== 'YOUR_GOOGLE_API_KEY') {
-      const autocompleteUrl = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(input)}&types=(regions)&key=${googleApiKey}`;
-      const apiRes = await fetch(autocompleteUrl);
-      if (apiRes.ok) {
-        const data = await apiRes.json();
-        if (data.status === 'OK' && Array.isArray(data.predictions)) {
-          const predictions = data.predictions.map(p => ({
-            place_id: p.place_id,
-            description: p.description,
-            main_text: p.structured_formatting?.main_text || p.description,
-            secondary_text: p.structured_formatting?.secondary_text || '',
-            types: p.types || []
-          }));
+    if (!googleApiKey || googleApiKey === 'YOUR_GOOGLE_API_KEY') {
+      return res.json({ success: true, predictions: [] });
+    }
+
+    // 1. Try Google Places API (New)
+    try {
+      const newApiUrl = 'https://places.googleapis.com/v1/places:autocomplete';
+      const newApiRes = await fetch(newApiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': googleApiKey,
+          'X-Goog-FieldMask': 'suggestions.placePrediction.placeId,suggestions.placePrediction.text,suggestions.placePrediction.structuredFormat,suggestions.placePrediction.types'
+        },
+        body: JSON.stringify({ input })
+      });
+
+      if (newApiRes.ok) {
+        const data = await newApiRes.json();
+        if (Array.isArray(data.suggestions) && data.suggestions.length > 0) {
+          const predictions = data.suggestions.map(s => {
+            const p = s.placePrediction || {};
+            return {
+              place_id: p.placeId || '',
+              description: p.text?.text || '',
+              main_text: p.structuredFormat?.mainText?.text || p.text?.text || '',
+              secondary_text: p.structuredFormat?.secondaryText?.text || '',
+              types: p.types || []
+            };
+          }).filter(p => p.place_id && p.description);
+
           return res.json({
             success: true,
             predictions,
-            source: 'Google Places'
+            source: 'Google Places (New)'
           });
-        } else if (data.status === 'ZERO_RESULTS') {
-          // Retry without types=(regions) constraint in case user searched a specific landmark or city area
-          const generalUrl = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(input)}&key=${googleApiKey}`;
-          const genRes = await fetch(generalUrl);
-          if (genRes.ok) {
-            const genData = await genRes.json();
-            if (genData.status === 'OK' && Array.isArray(genData.predictions)) {
-              const predictions = genData.predictions.map(p => ({
-                place_id: p.place_id,
-                description: p.description,
-                main_text: p.structured_formatting?.main_text || p.description,
-                secondary_text: p.structured_formatting?.secondary_text || '',
-                types: p.types || []
-              }));
-              return res.json({
-                success: true,
-                predictions,
-                source: 'Google Places'
-              });
-            }
-          }
+        } else if (Array.isArray(data.suggestions) && data.suggestions.length === 0) {
+          return res.json({
+            success: true,
+            predictions: [],
+            source: 'Google Places (New)'
+          });
         }
+      }
+    } catch (newErr) {
+      console.warn('Places API (New) fetch warning:', newErr);
+    }
+
+    // 2. Fallback to Google Maps Places Autocomplete endpoint
+    const legacyUrl = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(input)}&key=${googleApiKey}`;
+    const legacyRes = await fetch(legacyUrl);
+    if (legacyRes.ok) {
+      const data = await legacyRes.json();
+      if (data.status === 'OK' && Array.isArray(data.predictions)) {
+        const predictions = data.predictions.map(p => ({
+          place_id: p.place_id,
+          description: p.description,
+          main_text: p.structured_formatting?.main_text || p.description,
+          secondary_text: p.structured_formatting?.secondary_text || '',
+          types: p.types || []
+        }));
+        return res.json({
+          success: true,
+          predictions,
+          source: 'Google Places'
+        });
+      } else if (data.status === 'ZERO_RESULTS') {
+        return res.json({
+          success: true,
+          predictions: [],
+          source: 'Google Places'
+        });
       }
     }
 
-    // Fallback: search known destinations / verified cities
-    const fallbackCities = [
-      { name: 'Mumbai', state: 'Maharashtra', country: 'India', country_code: 'IN', place_id: 'ChIJwe1EZjDG5zsRaYxkjY_oFDo' },
-      { name: 'Thane', state: 'Maharashtra', country: 'India', country_code: 'IN', place_id: 'ChIJk7Qv9xK_5zsR7Y1m9tF2aVw' },
-      { name: 'Goa', state: 'Goa', country: 'India', country_code: 'IN', place_id: 'ChIJn3uP8bravzsRM3r6XbW2D3E' },
-      { name: 'Jaipur', state: 'Rajasthan', country: 'India', country_code: 'IN', place_id: 'ChIJ0VqYwQjcbTkR1H8914D1h7I' },
-      { name: 'Delhi', state: 'Delhi', country: 'India', country_code: 'IN', place_id: 'ChIJLbZ-NFv9DDkRzk0gTkm3wlI' },
-      { name: 'Bengaluru', state: 'Karnataka', country: 'India', country_code: 'IN', place_id: 'ChIJbU60yXAWrjsR4E9-Ule3Qq4' },
-      { name: 'Kyoto', state: 'Kyoto Prefecture', country: 'Japan', country_code: 'JP', place_id: 'ChIJ3_Cjvh4AAWARj47vX40zpwU' },
-      { name: 'Tokyo', state: 'Tokyo', country: 'Japan', country_code: 'JP', place_id: 'ChIJ513GhmsWAWARi3mji1ChHQg' },
-      { name: 'Paris', state: 'Île-de-France', country: 'France', country_code: 'FR', place_id: 'ChIJD7fiBh9u5kcRYJSMaMOCCwQ' },
-      { name: 'London', state: 'England', country: 'United Kingdom', country_code: 'GB', place_id: 'ChIJdd4hrwug2EcRmSrV3Vo6llI' },
-      { name: 'Rome', state: 'Lazio', country: 'Italy', country_code: 'IT', place_id: 'ChIJu46S-ZZhLxMROG5lkwZ3D7k' },
-      { name: 'New York', state: 'New York', country: 'United States', country_code: 'US', place_id: 'ChIJOwg_06VPwokRYv534QaPC8g' }
-    ];
-
-    const q = input.toLowerCase();
-    const matched = fallbackCities.filter(c =>
-      c.name.toLowerCase().includes(q) ||
-      c.state.toLowerCase().includes(q) ||
-      c.country.toLowerCase().includes(q)
-    );
-
-    const fallbackPredictions = matched.map(c => ({
-      place_id: c.place_id,
-      description: `${c.name}, ${c.state}, ${c.country}`,
-      main_text: c.name,
-      secondary_text: `${c.state}, ${c.country}`,
-      types: ['locality', 'political', 'geocode']
-    }));
-
     return res.json({
       success: true,
-      predictions: fallbackPredictions,
-      source: 'Verified Directory'
+      predictions: []
     });
   } catch (err) {
     console.error('Error in places autocomplete endpoint:', err);
-    return res.status(500).json({ success: false, predictions: [], error: 'Unable to search destinations right now.' });
+    return res.status(200).json({ success: true, predictions: [], error: 'Unable to search destinations right now.' });
   }
 });
 
@@ -232,9 +232,57 @@ router.post('/places/details', async (req, res) => {
       return res.status(400).json({ success: false, error: 'place_id is required' });
     }
 
-    const googleApiKey = process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
+    const googleApiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY;
 
     if (googleApiKey && googleApiKey !== 'YOUR_GOOGLE_API_KEY') {
+      // 1. Try Google Places API (New) Place Details
+      try {
+        const newDetailsUrl = `https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}`;
+        const newRes = await fetch(newDetailsUrl, {
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': googleApiKey,
+            'X-Goog-FieldMask': 'id,displayName,formattedAddress,addressComponents,location'
+          }
+        });
+        if (newRes.ok) {
+          const result = await newRes.json();
+          let city = '';
+          let country = '';
+          let countryCode = '';
+
+          const components = result.addressComponents || [];
+          for (const c of components) {
+            const types = c.types || [];
+            if (types.includes('locality') || types.includes('administrative_area_level_2')) {
+              city = c.longText || c.shortText || '';
+            }
+            if (types.includes('country')) {
+              country = c.longText || '';
+              countryCode = c.shortText || '';
+            }
+          }
+
+          const destination = city || result.displayName?.text || result.formattedAddress || '';
+
+          return res.json({
+            success: true,
+            place_id: result.id || placeId,
+            name: result.displayName?.text || destination,
+            destination: destination,
+            country: country || '',
+            country_code: countryCode || '',
+            formatted_address: result.formattedAddress || '',
+            latitude: result.location?.latitude ?? null,
+            longitude: result.location?.longitude ?? null,
+            source: 'Google Places (New)'
+          });
+        }
+      } catch (newErr) {
+        console.warn('Places (New) Details warning:', newErr);
+      }
+
+      // 2. Fallback to legacy Place Details endpoint
       const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(placeId)}&fields=place_id,name,formatted_address,geometry,address_components&key=${googleApiKey}`;
       const apiRes = await fetch(detailsUrl);
       if (apiRes.ok) {
@@ -274,38 +322,6 @@ router.post('/places/details', async (req, res) => {
       }
     }
 
-    // Fallback if key is missing or offline
-    const fallbackCities = [
-      { name: 'Mumbai', state: 'Maharashtra', country: 'India', country_code: 'IN', place_id: 'ChIJwe1EZjDG5zsRaYxkjY_oFDo', lat: 19.076, lng: 72.8777 },
-      { name: 'Thane', state: 'Maharashtra', country: 'India', country_code: 'IN', place_id: 'ChIJk7Qv9xK_5zsR7Y1m9tF2aVw', lat: 19.2183, lng: 72.9781 },
-      { name: 'Goa', state: 'Goa', country: 'India', country_code: 'IN', place_id: 'ChIJn3uP8bravzsRM3r6XbW2D3E', lat: 15.2993, lng: 74.124 },
-      { name: 'Jaipur', state: 'Rajasthan', country: 'India', country_code: 'IN', place_id: 'ChIJ0VqYwQjcbTkR1H8914D1h7I', lat: 26.9124, lng: 75.7873 },
-      { name: 'Delhi', state: 'Delhi', country: 'India', country_code: 'IN', place_id: 'ChIJLbZ-NFv9DDkRzk0gTkm3wlI', lat: 28.6139, lng: 77.209 },
-      { name: 'Bengaluru', state: 'Karnataka', country: 'India', country_code: 'IN', place_id: 'ChIJbU60yXAWrjsR4E9-Ule3Qq4', lat: 12.9716, lng: 77.5946 },
-      { name: 'Kyoto', state: 'Kyoto Prefecture', country: 'Japan', country_code: 'JP', place_id: 'ChIJ3_Cjvh4AAWARj47vX40zpwU', lat: 35.0116, lng: 135.7681 },
-      { name: 'Tokyo', state: 'Tokyo', country: 'Japan', country_code: 'JP', place_id: 'ChIJ513GhmsWAWARi3mji1ChHQg', lat: 35.6762, lng: 139.6503 },
-      { name: 'Paris', state: 'Île-de-France', country: 'France', country_code: 'FR', place_id: 'ChIJD7fiBh9u5kcRYJSMaMOCCwQ', lat: 48.8566, lng: 2.3522 },
-      { name: 'London', state: 'England', country: 'United Kingdom', country_code: 'GB', place_id: 'ChIJdd4hrwug2EcRmSrV3Vo6llI', lat: 51.5074, lng: -0.1278 },
-      { name: 'Rome', state: 'Lazio', country: 'Italy', country_code: 'IT', place_id: 'ChIJu46S-ZZhLxMROG5lkwZ3D7k', lat: 41.9028, lng: 12.4964 },
-      { name: 'New York', state: 'New York', country: 'United States', country_code: 'US', place_id: 'ChIJOwg_06VPwokRYv534QaPC8g', lat: 40.7128, lng: -74.006 }
-    ];
-
-    const matched = fallbackCities.find(c => c.place_id === placeId);
-    if (matched) {
-      return res.json({
-        success: true,
-        place_id: matched.place_id,
-        name: matched.name,
-        destination: matched.name,
-        country: matched.country,
-        country_code: matched.country_code,
-        formatted_address: `${matched.name}, ${matched.state}, ${matched.country}`,
-        latitude: matched.lat,
-        longitude: matched.lng,
-        source: 'Verified Directory'
-      });
-    }
-
     return res.json({
       success: true,
       place_id: placeId,
@@ -318,6 +334,10 @@ router.post('/places/details', async (req, res) => {
       source: 'Default'
     });
   } catch (err) {
+    console.error('Error in places details endpoint:', err);
+    return res.status(500).json({ success: false, error: 'Unable to retrieve place details right now.' });
+  }
+});
     console.error('Error in place details endpoint:', err);
     return res.status(500).json({ success: false, error: 'Unable to retrieve place details.' });
   }
@@ -1359,7 +1379,7 @@ if (!process.env.VERCEL) {
           const data = await checkRes.json();
           if (data && data.server === 'Locora Backend Express API') {
             console.log(`[SERVER INFO] Locora Backend is already running on http://localhost:${PORT}. Reusing active backend instance.`);
-            setInterval(() => { }, 3600000); // Keep process active so concurrently does not kill Vite
+            setInterval(() => { }, 3600000);
             return;
           }
         }
@@ -1374,20 +1394,4 @@ if (!process.env.VERCEL) {
     }
   });
 }
-if (data && data.server === 'Locora Backend Express API') {
-  console.log(`[SERVER INFO] Locora Backend is already running on http://localhost:${PORT}. Reusing active backend instance.`);
-  setInterval(() => { }, 3600000); // Keep process active so concurrently does not kill Vite
-  return;
-}
-        }
-      } catch (_) { }
 
-console.error(`[SERVER ERROR] Port ${PORT} is already in use by another process.`);
-console.error(`[SERVER ERROR] Please stop the process running on port ${PORT} to start a new server instance.`);
-process.exit(1);
-    } else {
-  console.error('[SERVER ERROR]', err);
-  process.exit(1);
-}
-  });
-}

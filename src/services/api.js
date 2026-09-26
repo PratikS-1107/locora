@@ -2899,29 +2899,68 @@ export const createTripFromReadyMade = async (readyMadeTrip, userId, options = {
 
 // --- PUBLIC COMMUNITY TRIPS SERVICES ---
 
-export const getPublicTrips = async () => {
+export const getPublicTrips = async (searchQuery = '') => {
   if (!isSupabaseConfigured()) {
     const trips = getLocalTrips();
-    const publicOnly = trips.filter(t => t.is_public === true);
+    const publicOnly = trips.filter(t => t.is_public === true && t.trip_source !== 'template');
     return { data: publicOnly.map(normalizeTrip), error: null };
   }
 
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('trips')
       .select('*')
       .eq('is_public', true)
-      .eq('trip_source', 'community')
+      .neq('trip_source', 'template')
       .order('created_at', { ascending: false });
+
+    if (searchQuery && typeof searchQuery === 'string' && searchQuery.trim()) {
+      const q = searchQuery.trim();
+      query = query.or(`title.ilike.%${q}%,destination.ilike.%${q}%,country.ilike.%${q}%,description.ilike.%${q}%`);
+    }
+
+    const { data: tripsData, error } = await query;
 
     if (error) {
       console.error('Supabase getPublicTrips error:', error.message);
-      throw error;
+      return { data: [], error };
     }
-    return { data: (data || []).map(normalizeTrip), error: null };
+
+    // Fetch creator profiles to display author name and avatar
+    const userIds = Array.from(new Set((tripsData || []).map(t => t.user_id).filter(Boolean)));
+    let profilesMap = {};
+    if (userIds.length > 0) {
+      try {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, name, avatar_url')
+          .in('id', userIds);
+
+        if (profiles) {
+          profiles.forEach(p => {
+            profilesMap[p.id] = p;
+          });
+        }
+      } catch (profErr) {
+        console.warn('Profiles fetch warning for public trips:', profErr);
+      }
+    }
+
+    const enriched = (tripsData || []).map(t => {
+      const profile = profilesMap[t.user_id] || {};
+      const author_name = t.author_name || profile.name || 'Community Traveler';
+      const author_avatar = t.author_avatar || profile.avatar_url || null;
+      return normalizeTrip({
+        ...t,
+        author_name,
+        author_avatar
+      });
+    });
+
+    return { data: enriched, error: null };
   } catch (err) {
     console.error('getPublicTrips catch:', err);
-    throw err;
+    return { data: [], error: err };
   }
 };
 
