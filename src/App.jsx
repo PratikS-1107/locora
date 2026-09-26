@@ -151,6 +151,22 @@ const AppLayout = () => {
             }
           />
           <Route
+            path="/trip/:id/edit-details"
+            element={
+              <ProtectedRoute>
+                <CreateTrip />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/edit-trip/:id"
+            element={
+              <ProtectedRoute>
+                <CreateTrip />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/trips/:tripId"
             element={
               <ProtectedRoute>
@@ -163,6 +179,14 @@ const AppLayout = () => {
             element={
               <ProtectedRoute>
                 <ItineraryBuilder />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/trips/:tripId/edit-details"
+            element={
+              <ProtectedRoute>
+                <CreateTrip />
               </ProtectedRoute>
             }
           />

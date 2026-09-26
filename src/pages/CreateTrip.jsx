@@ -6,6 +6,7 @@ import {
   updateTrip,
   getTripById,
   uploadTripCover,
+  updateTripDatesAndItinerary,
   getPlacesAutocomplete,
   getPlaceDetails
 } from '../services/api';
@@ -227,14 +228,19 @@ const CreateTrip = () => {
 
     try {
       if (isEditMode) {
-        // Edit existing trip
+        // Edit existing trip: synchronize dates & itinerary days first
+        const dateRes = await updateTripDatesAndItinerary(id, startDate, endDate, true);
+        if (dateRes.error) {
+          setErrorMsg(dateRes.error.message || 'Unable to update trip dates.');
+          setIsSubmitting(false);
+          return;
+        }
+
         const { data, error } = await updateTrip(id, {
           title: tripName.trim(),
           destination: destination.trim(),
           country: country.trim(),
           country_code: countryCode.trim(),
-          start_date: startDate,
-          end_date: endDate,
           budget: Number(budget) || 0,
           description: description.trim(),
           cover_image_url: coverPhoto || null
@@ -369,7 +375,7 @@ const CreateTrip = () => {
                 type="text"
                 required
                 className="form-input"
-                placeholder="Search for a city or destination (e.g. Mumbai, Kyoto, Paris)..."
+                placeholder="Search for a city or destination"
                 value={destInput}
                 onChange={(e) => {
                   setDestInput(e.target.value);

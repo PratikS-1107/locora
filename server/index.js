@@ -695,10 +695,10 @@ const fetchMultiQueryPlaces = async (latitude, longitude, category, googleApiKey
                   const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mainName + ' ' + address)}`;
 
                   const extractedTypes = [
-                     item.type,
-                     item.class,
-                     item.category,
-                     item.addresstype,
+                    item.type,
+                    item.class,
+                    item.category,
+                    item.addresstype,
                     ...(item.display_name ? item.display_name.split(',').map(s => s.trim().toLowerCase()) : [])
                   ].filter(Boolean);
 
@@ -1372,5 +1372,22 @@ if (!process.env.VERCEL) {
       console.error('[SERVER ERROR]', err);
       process.exit(1);
     }
+  });
+}
+if (data && data.server === 'Locora Backend Express API') {
+  console.log(`[SERVER INFO] Locora Backend is already running on http://localhost:${PORT}. Reusing active backend instance.`);
+  setInterval(() => { }, 3600000); // Keep process active so concurrently does not kill Vite
+  return;
+}
+        }
+      } catch (_) { }
+
+console.error(`[SERVER ERROR] Port ${PORT} is already in use by another process.`);
+console.error(`[SERVER ERROR] Please stop the process running on port ${PORT} to start a new server instance.`);
+process.exit(1);
+    } else {
+  console.error('[SERVER ERROR]', err);
+  process.exit(1);
+}
   });
 }

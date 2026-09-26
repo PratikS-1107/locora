@@ -319,7 +319,7 @@ export const deleteProfileAvatar = async (userId, currentAvatarUrl = null) => {
           mockUser.user_metadata.avatar_url = null;
         }
         localStorage.setItem('locora_mock_user', JSON.stringify(mockUser));
-      } catch (_) {}
+      } catch (_) { }
     }
     return { success: true, error: null };
   }
@@ -1130,6 +1130,28 @@ export const uploadTripCover = async (file) => {
   }
 };
 
+/**
+ * Uploads a new cover image and updates the trips row only if the upload succeeds.
+ * If upload fails, preserves the existing image and returns the error.
+ */
+export const updateTripCover = async (tripId, file) => {
+  if (!tripId || !file) {
+    return { data: null, error: new Error('Trip ID and image file are required') };
+  }
+
+  const { data: newUrl, error: uploadErr } = await uploadTripCover(file);
+  if (uploadErr || !newUrl) {
+    return { data: null, error: uploadErr || new Error('Failed to upload cover image') };
+  }
+
+  const { data: updatedTrip, error: updateErr } = await updateTrip(tripId, { cover_image_url: newUrl });
+  if (updateErr) {
+    return { data: null, error: updateErr };
+  }
+
+  return { data: updatedTrip, coverUrl: newUrl, error: null };
+};
+
 // --- ITINERARY DAYS SERVICES (itinerary_days table) ---
 
 export const getItineraryDays = async (tripId) => {
@@ -1239,61 +1261,191 @@ export const deleteItineraryDay = async (dayId) => {
   return { data: { id: dayId }, error: null };
 };
 
+export const getDatesInRange = (startDateStr, endDateStr) => {
+  const dates = [];
+  if (!startDateStr || !endDateStr) return dates;
+  const [sY, sM, sD] = String(startDateStr).split('-').map(Number);
+  const [eY, eM, eD] = String(endDateStr).split('-').map(Number);
+  if (!sY || !sM || !sD || !eY || !eM || !eD) return dates;
+
+  const curr = new Date(sY, sM - 1, sD);
+  const end = new Date(eY, eM - 1, eD);
+  if (curr > end) return dates;
+
+  while (curr <= end) {
+    const year = curr.getFullYear();
+    const month = String(curr.getMonth() + 1).padStart(2, '0');
+    const day = String(curr.getDate()).padStart(2, '0');
+    dates.push(`${year}-${month}-${day}`);
+    curr.setDate(curr.getDate() + 1);
+  }
+  return dates;
+};
+
+/**
+ * Checks if shortening the trip date range will remove days that currently have activities.
+ */
+export const checkShortenTripImpact = async (tripId, newStartDate, newEndDate) => {
+  if (!tripId || !newStartDate || !newEndDate) {
+    return { willShorten: false, removedDays: [], affectedActivitiesCount: 0 };
+  }
+
+  const { data: days } = await getItineraryDays(tripId);
+  const sortedDays = (days || []).sort((a, b) => (a.day_number || 0) - (b.day_number || 0));
+
+  const targetDates = getDatesInRange(newStartDate, newEndDate);
+  const newTotalDays = targetDates.length;
+
+  if (sortedDays.length <= newTotalDays) {
+    return { willShorten: false, removedDays: [], affectedActivitiesCount: 0 };
+  }
+
+  const daysToRemove = sortedDays.slice(newTotalDays);
+  const { data: allActivities } = await getActivities(tripId);
+  const activitiesList = allActivities || [];
+
+  const removedDaysWithDetails = daysToRemove.map(d => {
+    const acts = activitiesList.filter(a => a.itinerary_day_id === d.id);
+    return {
+      ...d,
+      activityCount: acts.length,
+      activities: acts
+    };
+  });
+
+  const totalAffected = removedDaysWithDetails.reduce((sum, d) => sum + d.activityCount, 0);
+
+  return {
+    willShorten: true,
+    removedDays: removedDaysWithDetails,
+    affectedActivitiesCount: totalAffected
+  };
+};
+
+/**
+ * Updates trip start_date & end_date, recomputes status, and synchronizes itinerary_days.
+ * Preserves itinerary_days IDs and keeps activities attached to their respective days.
+ */
+export const updateTripDatesAndItinerary = async (tripId, newStartDate, newEndDate, forceShorten = false) => {
+  if (!tripId) return { data: null, error: new Error('Trip ID is required') };
+  if (!newStartDate || !newEndDate) return { data: null, error: new Error('Start date and end date are required') };
+
+  if (newEndDate < newStartDate) {
+    return { data: null, error: new Error('End date cannot be before start date.') };
+  }
+
+  const targetDates = getDatesInRange(newStartDate, newEndDate);
+  if (targetDates.length === 0) {
+    return { data: null, error: new Error('Invalid date range.') };
+  }
+
+  // Check impact if shortening
+  const impact = await checkShortenTripImpact(tripId, newStartDate, newEndDate);
+  if (impact.willShorten && impact.affectedActivitiesCount > 0 && !forceShorten) {
+    return {
+      data: null,
+      requiresConfirmation: true,
+      removedDays: impact.removedDays,
+      affectedActivitiesCount: impact.affectedActivitiesCount,
+      error: new Error(`Shortening the trip will remove ${impact.removedDays.length} day(s) containing ${impact.affectedActivitiesCount} activity(ies).`)
+    };
+  }
+
+  const { data: days } = await getItineraryDays(tripId);
+  const sortedDays = (days || []).sort((a, b) => (a.day_number || 0) - (b.day_number || 0));
+
+  // 1. Remove excess days if trip is shortened
+  if (impact.willShorten) {
+    for (const d of impact.removedDays) {
+      if (isSupabaseConfigured()) {
+        await supabase.from('activities').delete().eq('itinerary_day_id', d.id);
+        await supabase.from('itinerary_days').delete().eq('id', d.id);
+      } else {
+        const storedActs = localStorage.getItem(`locora_activities_${tripId}`);
+        if (storedActs) {
+          const acts = JSON.parse(storedActs).filter(a => a.itinerary_day_id !== d.id);
+          localStorage.setItem(`locora_activities_${tripId}`, JSON.stringify(acts));
+        }
+        const storedDays = localStorage.getItem(`locora_days_${tripId}`);
+        if (storedDays) {
+          const dl = JSON.parse(storedDays).filter(day => day.id !== d.id);
+          localStorage.setItem(`locora_days_${tripId}`, JSON.stringify(dl));
+        }
+      }
+    }
+  }
+
+  // 2. Update remaining existing days with new sequential dates
+  const daysToKeepCount = Math.min(sortedDays.length, targetDates.length);
+  for (let i = 0; i < daysToKeepCount; i++) {
+    const day = sortedDays[i];
+    const newDate = targetDates[i];
+    const newDayNum = i + 1;
+    if (day.date !== newDate || day.day_number !== newDayNum) {
+      await updateItineraryDay(day.id, { date: newDate, day_number: newDayNum });
+    }
+  }
+
+  // 3. Create new days if trip is extended
+  if (targetDates.length > sortedDays.length) {
+    for (let i = sortedDays.length; i < targetDates.length; i++) {
+      const newDate = targetDates[i];
+      const newDayNum = i + 1;
+      await createItineraryDay({
+        tripId,
+        dayNumber: newDayNum,
+        date: newDate,
+        notes: ''
+      });
+    }
+  }
+
+  // 4. Recompute trip status
+  const today = getTodayLocalDateString();
+  let status = 'upcoming';
+  if (today < newStartDate) {
+    status = 'upcoming';
+  } else if (today >= newStartDate && today <= newEndDate) {
+    status = 'active';
+  } else {
+    status = 'completed';
+  }
+
+  // 5. Update trips table with start_date, end_date, and status
+  const { data: updatedTrip, error: tripErr } = await updateTrip(tripId, {
+    start_date: newStartDate,
+    end_date: newEndDate,
+    status
+  });
+
+  if (tripErr) {
+    return { data: null, error: tripErr };
+  }
+
+  const { data: updatedDays } = await getItineraryDays(tripId);
+
+  return {
+    data: updatedTrip,
+    days: updatedDays,
+    error: null
+  };
+};
+
 export const ensureItineraryDays = async (tripId, startDate, endDate) => {
   if (!tripId || !startDate || !endDate) {
     return await getItineraryDays(tripId);
   }
 
-  const { data: existingDays, error: daysErr } = await getItineraryDays(tripId);
-  if (daysErr) return { data: [], error: daysErr };
-
-  const existingDateMap = new Map((existingDays || []).map(d => [d.date, d]));
-
-  // Generate target dates array
-  const targetDates = [];
-  let curr = new Date(startDate);
-  const end = new Date(endDate);
-
-  if (isNaN(curr.getTime()) || isNaN(end.getTime()) || curr > end) {
-    return { data: existingDays || [], error: null };
-  }
-
-  while (curr <= end) {
-    targetDates.push(curr.toISOString().split('T')[0]);
-    curr.setDate(curr.getDate() + 1);
-  }
-
-  // Identify missing dates to create
-  const missingDates = targetDates.filter(d => !existingDateMap.has(d));
-
-  if (missingDates.length > 0) {
-    if (!isSupabaseConfigured()) {
-      for (const d of missingDates) {
-        const dayNum = (existingDays || []).length + 1;
-        await createItineraryDay({
-          tripId,
-          dayNumber: dayNum,
-          date: d,
-          notes: ''
-        });
-      }
-      return await getItineraryDays(tripId);
-    }
-
-    const nextDayNum = (existingDays || []).length + 1;
-    const newRows = missingDates.map((d, idx) => ({
-      trip_id: tripId,
-      day_number: nextDayNum + idx,
-      date: d,
-      notes: ''
-    }));
-
-    const { error: insertErr } = await supabase
-      .from('itinerary_days')
-      .insert(newRows);
-
-    if (insertErr) {
-      console.error('ensureItineraryDays insert error:', insertErr.message);
+  const { data: existingDays } = await getItineraryDays(tripId);
+  if (!existingDays || existingDays.length === 0) {
+    const targetDates = getDatesInRange(startDate, endDate);
+    for (let i = 0; i < targetDates.length; i++) {
+      await createItineraryDay({
+        tripId,
+        dayNumber: i + 1,
+        date: targetDates[i],
+        notes: ''
+      });
     }
   }
 
@@ -3136,7 +3288,7 @@ export const getUserCheckins = async (userId) => {
   try {
     const raw = localStorage.getItem(localKey);
     if (raw) localData = JSON.parse(raw);
-  } catch (_) {}
+  } catch (_) { }
 
   if (!isSupabaseConfigured() || !isValidUUID(userId)) {
     return { data: localData, error: null };
@@ -3159,7 +3311,7 @@ export const getUserCheckins = async (userId) => {
     const list = data || [];
     try {
       localStorage.setItem(localKey, JSON.stringify(list));
-    } catch (_) {}
+    } catch (_) { }
 
     return { data: list, error: null };
   } catch (err) {
@@ -3200,7 +3352,7 @@ export const createTravelCheckin = async (userId, checkinData) => {
   try {
     const raw = localStorage.getItem(localKey);
     if (raw) localList = JSON.parse(raw);
-  } catch (_) {}
+  } catch (_) { }
 
   // Prevent duplicate check-in to same place within 6 hours (21600000 ms)
   const sixHoursAgo = Date.now() - (6 * 60 * 60 * 1000);
@@ -3217,7 +3369,7 @@ export const createTravelCheckin = async (userId, checkinData) => {
   localList.unshift(newRecord);
   try {
     localStorage.setItem(localKey, JSON.stringify(localList));
-  } catch (_) {}
+  } catch (_) { }
 
   if (!isSupabaseConfigured() || !isValidUUID(userId)) {
     return { data: newRecord, error: null };
@@ -3253,7 +3405,7 @@ export const getUserAchievements = async (userId) => {
   try {
     const raw = localStorage.getItem(localKey);
     if (raw) localList = JSON.parse(raw);
-  } catch (_) {}
+  } catch (_) { }
 
   if (!isSupabaseConfigured() || !isValidUUID(userId)) {
     return { data: localList, error: null };
@@ -3273,7 +3425,7 @@ export const getUserAchievements = async (userId) => {
     const list = data || [];
     try {
       localStorage.setItem(localKey, JSON.stringify(list));
-    } catch (_) {}
+    } catch (_) { }
 
     return { data: list, error: null };
   } catch (err) {
@@ -3309,7 +3461,7 @@ export const saveUserAchievement = (userId, achievementId, progressCurrent = 1, 
       list.push({ id: `ach-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`, ...record, created_at: nowIso });
     }
     localStorage.setItem(localKey, JSON.stringify(list));
-  } catch (_) {}
+  } catch (_) { }
 
   return record;
 };

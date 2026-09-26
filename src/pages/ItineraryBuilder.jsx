@@ -1,10 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
   getTripById,
   updateTrip,
   updateTripBudget,
+  updateTripCover,
+  updateTripDatesAndItinerary,
+  checkShortenTripImpact,
+  getDatesInRange,
   getItineraryDays,
   ensureItineraryDays,
   updateItineraryDay,
@@ -34,7 +38,9 @@ import {
   Eye,
   Info,
   ChevronUp,
-  ChevronDown
+  ChevronDown,
+  Upload,
+  Image as ImageIcon
 } from 'lucide-react';
 
 const CATEGORIES = [
@@ -105,6 +111,18 @@ const ItineraryBuilder = () => {
   const [showDayNoteModal, setShowDayNoteModal] = useState(false);
   const [editingDayNote, setEditingDayNote] = useState('');
   const [isSavingDayNote, setIsSavingDayNote] = useState(false);
+
+  // Dates editing state
+  const [showDatesModal, setShowDatesModal] = useState(false);
+  const [editStartDate, setEditStartDate] = useState('');
+  const [editEndDate, setEditEndDate] = useState('');
+  const [isSavingDates, setIsSavingDates] = useState(false);
+  const [datesErrorMsg, setDatesErrorMsg] = useState('');
+  const [shortenWarning, setShortenWarning] = useState(null);
+
+  // Cover image uploading state
+  const [isUploadingCover, setIsUploadingCover] = useState(false);
+  const coverInputRef = useRef(null);
 
   // Trip metadata editable state
   const [tripTitleInput, setTripTitleInput] = useState('');
@@ -388,6 +406,86 @@ const ItineraryBuilder = () => {
     }
   };
 
+  const handleOpenDatesModal = () => {
+    setEditStartDate(trip?.start_date || '');
+    setEditEndDate(trip?.end_date || '');
+    setDatesErrorMsg('');
+    setShortenWarning(null);
+    setShowDatesModal(true);
+  };
+
+  const handleSaveDates = async (forceConfirmed = false) => {
+    setDatesErrorMsg('');
+    if (!editStartDate || !editEndDate) {
+      setDatesErrorMsg('Please specify both Start Date and End Date.');
+      return;
+    }
+    if (editEndDate < editStartDate) {
+      setDatesErrorMsg('End Date cannot be before Start Date.');
+      return;
+    }
+
+    // Check impact if shortening
+    if (!forceConfirmed) {
+      const impact = await checkShortenTripImpact(trip.id, editStartDate, editEndDate);
+      if (impact.willShorten && impact.affectedActivitiesCount > 0) {
+        setShortenWarning(impact);
+        return;
+      }
+    }
+
+    setIsSavingDates(true);
+    try {
+      const res = await updateTripDatesAndItinerary(trip.id, editStartDate, editEndDate, true);
+      if (res.error) {
+        setDatesErrorMsg(res.error.message || 'Unable to update trip dates.');
+        return;
+      }
+
+      setTrip(res.data);
+      setDays(res.days || []);
+      const actRes = await getActivities(trip.id);
+      setActivities(actRes.data || []);
+
+      if (activeDayIndex >= (res.days || []).length) {
+        setActiveDayIndex(0);
+      }
+
+      setShowDatesModal(false);
+      setShortenWarning(null);
+      showToast('Trip dates and itinerary schedule updated successfully');
+    } catch (err) {
+      setDatesErrorMsg(err.message || 'Failed to update trip dates');
+    } finally {
+      setIsSavingDates(false);
+    }
+  };
+
+  const handleCoverFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      showToast('Please select a valid image file (JPEG, PNG, WebP).');
+      return;
+    }
+
+    setIsUploadingCover(true);
+    try {
+      const { data: updatedTrip, coverUrl, error } = await updateTripCover(trip.id, file);
+      if (error || !updatedTrip) {
+        showToast('Failed to upload cover image. Please try again.');
+      } else {
+        setTrip(prev => ({ ...prev, cover_image_url: coverUrl || updatedTrip.cover_image_url }));
+        showToast('Trip cover image updated successfully');
+      }
+    } catch (err) {
+      showToast('Unable to upload cover image.');
+    } finally {
+      setIsUploadingCover(false);
+      if (coverInputRef.current) coverInputRef.current.value = '';
+    }
+  };
+
   // Trip-level metadata Save button
   const handleGlobalSave = async () => {
     if (!trip) return;
@@ -546,9 +644,23 @@ const ItineraryBuilder = () => {
             <h1 style={{ fontSize: '1.75rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
               {tripTitle}
             </h1>
-            <div style={{ display: 'flex', gap: '16px', fontSize: '0.875rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
+            <div style={{ display: 'flex', gap: '16px', fontSize: '0.875rem', color: 'var(--text-secondary)', marginTop: '4px', flexWrap: 'wrap', alignItems: 'center' }}>
               {trip.start_date && trip.end_date && (
-                <span>📅 {trip.start_date} — {trip.end_date}</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                  <Calendar size={14} style={{ color: 'var(--primary)' }} />
+                  <span>{trip.start_date} — {trip.end_date}</span>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={handleOpenDatesModal}
+                      className="btn-icon"
+                      style={{ width: '24px', height: '24px', padding: 0 }}
+                      title="Edit Trip Dates"
+                    >
+                      <Edit3 size={12} />
+                    </button>
+                  )}
+                </span>
               )}
               {trip.destination && (
                 <span>📍 {trip.destination}{trip.country ? `, ${trip.country}` : ''}</span>
@@ -829,9 +941,119 @@ const ItineraryBuilder = () => {
             )}
           </div>
 
-          {/* TRIP DETAILS CARD */}
+          {/* TRIP DETAILS & COVER CARD */}
           <div className="glass-panel" style={{ padding: '24px' }}>
             <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: '0 0 16px 0' }}>Trip Metadata</h3>
+
+            {/* Cover Image Section */}
+            <div style={{ marginBottom: '16px' }}>
+              <label className="form-label" style={{ fontSize: '0.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>Cover Image</span>
+                {isUploadingCover && <span style={{ fontSize: '0.75rem', color: 'var(--primary)' }}>Uploading...</span>}
+              </label>
+
+              {trip?.cover_image_url ? (
+                <div style={{ position: 'relative', width: '100%', height: '110px', borderRadius: 'var(--radius-sm)', overflow: 'hidden', marginBottom: '8px', border: '1px solid var(--border-subtle)' }}>
+                  <img
+                    src={trip.cover_image_url}
+                    alt={trip.title || 'Cover'}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => coverInputRef.current?.click()}
+                      disabled={isUploadingCover}
+                      className="btn"
+                      style={{
+                        position: 'absolute',
+                        bottom: '8px',
+                        right: '8px',
+                        padding: '4px 10px',
+                        fontSize: '0.75rem',
+                        backgroundColor: 'rgba(15, 23, 42, 0.85)',
+                        backdropFilter: 'blur(6px)',
+                        color: '#fff',
+                        border: '1px solid rgba(255,255,255,0.2)'
+                      }}
+                    >
+                      <Upload size={12} />
+                      <span>{isUploadingCover ? 'Uploading...' : 'Change Cover'}</span>
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div style={{
+                  padding: '14px',
+                  borderRadius: 'var(--radius-sm)',
+                  border: '1px dashed var(--border-subtle)',
+                  textAlign: 'center',
+                  marginBottom: '8px',
+                  backgroundColor: 'rgba(255, 255, 255, 0.02)'
+                }}>
+                  <ImageIcon size={24} style={{ color: 'var(--text-muted)', margin: '0 auto 6px auto' }} />
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                    No cover photo uploaded
+                  </div>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => coverInputRef.current?.click()}
+                      disabled={isUploadingCover}
+                      className="btn btn-secondary"
+                      style={{ padding: '4px 12px', fontSize: '0.75rem' }}
+                    >
+                      <Upload size={12} />
+                      <span>{isUploadingCover ? 'Uploading...' : 'Upload Cover'}</span>
+                    </button>
+                  )}
+                </div>
+              )}
+
+              <input
+                ref={coverInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/jpg"
+                style={{ display: 'none' }}
+                onChange={handleCoverFileChange}
+              />
+            </div>
+
+            {/* Trip Dates Section */}
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <label className="form-label" style={{ fontSize: '0.8rem', margin: 0 }}>Trip Dates</label>
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={handleOpenDatesModal}
+                    className="btn btn-secondary"
+                    style={{ padding: '2px 8px', fontSize: '0.75rem' }}
+                  >
+                    <Edit3 size={11} />
+                    <span>Edit Dates</span>
+                  </button>
+                )}
+              </div>
+              <div style={{
+                padding: '10px 12px',
+                borderRadius: 'var(--radius-sm)',
+                backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid var(--border-subtle)',
+                fontSize: '0.85rem',
+                color: 'var(--text-primary)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <Calendar size={14} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                <span>
+                  {trip?.start_date && trip?.end_date
+                    ? `${trip.start_date} — ${trip.end_date} (${days.length} ${days.length === 1 ? 'Day' : 'Days'})`
+                    : 'No dates set'}
+                </span>
+              </div>
+            </div>
 
             <div className="form-group" style={{ marginBottom: '14px' }}>
               <label className="form-label" style={{ fontSize: '0.8rem' }}>Trip Title</label>
@@ -1034,12 +1256,12 @@ const ItineraryBuilder = () => {
       <Modal
         isOpen={Boolean(itemToDelete)}
         onClose={() => { if (!isDeletingActivity) setItemToDelete(null); }}
-        title="Delete Activity"
+        title="Delete activity?"
         maxWidth="440px"
       >
         <div>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.6, marginBottom: '20px' }}>
-            Are you sure you want to remove <strong style={{ color: 'var(--text-primary)' }}>{itemToDelete?.title}</strong> from your itinerary? This cannot be undone.
+            Are you sure you want to remove <strong style={{ color: 'var(--text-primary)' }}>{itemToDelete?.title}</strong> from your itinerary?
           </p>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
             <button
@@ -1057,7 +1279,7 @@ const ItineraryBuilder = () => {
               style={{ backgroundColor: '#ef4444', color: '#fff', padding: '8px 18px', fontWeight: 600 }}
               disabled={isDeletingActivity}
             >
-              {isDeletingActivity ? 'Deleting...' : 'Delete Activity'}
+              {isDeletingActivity ? 'Deleting...' : 'Delete'}
             </button>
           </div>
         </div>
@@ -1143,6 +1365,138 @@ const ItineraryBuilder = () => {
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* MODAL: EDIT TRIP DATES */}
+      <Modal
+        isOpen={showDatesModal}
+        onClose={() => {
+          if (!isSavingDates) {
+            setShowDatesModal(false);
+            setShortenWarning(null);
+            setDatesErrorMsg('');
+          }
+        }}
+        title="Edit Trip Dates"
+        maxWidth="480px"
+      >
+        <div>
+          {datesErrorMsg && (
+            <div style={{
+              padding: '10px 14px',
+              backgroundColor: 'rgba(239, 68, 68, 0.15)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              borderRadius: 'var(--radius-sm)',
+              color: '#fca5a5',
+              fontSize: '0.85rem',
+              marginBottom: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              <AlertTriangle size={16} style={{ flexShrink: 0 }} />
+              <span>{datesErrorMsg}</span>
+            </div>
+          )}
+
+          {shortenWarning ? (
+            <div>
+              <div style={{
+                padding: '14px 16px',
+                backgroundColor: 'rgba(245, 158, 11, 0.12)',
+                border: '1px solid rgba(245, 158, 11, 0.3)',
+                borderRadius: 'var(--radius-sm)',
+                color: '#fde68a',
+                fontSize: '0.9rem',
+                lineHeight: 1.5,
+                marginBottom: '20px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, marginBottom: '6px' }}>
+                  <AlertTriangle size={18} style={{ color: 'var(--accent-amber)' }} />
+                  <span>Confirm Shortening Trip</span>
+                </div>
+                Changing the trip to {getDatesInRange(editStartDate, editEndDate).length} days will remove Day {shortenWarning.removedDays.map(d => d.day_number).join(', ')} from this itinerary. These days contain {shortenWarning.affectedActivitiesCount} activities. Continue?
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                <button
+                  type="button"
+                  onClick={() => setShortenWarning(null)}
+                  className="btn btn-secondary"
+                  disabled={isSavingDates}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSaveDates(true)}
+                  className="btn"
+                  style={{ backgroundColor: '#ef4444', color: '#fff', padding: '8px 18px', fontWeight: 600 }}
+                  disabled={isSavingDates}
+                >
+                  {isSavingDates ? 'Updating...' : 'Continue'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '16px' }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label" style={{ fontSize: '0.8rem' }}>Start Date *</label>
+                  <input
+                    type="date"
+                    className="form-input"
+                    value={editStartDate}
+                    onChange={(e) => setEditStartDate(e.target.value)}
+                  />
+                </div>
+
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label" style={{ fontSize: '0.8rem' }}>End Date *</label>
+                  <input
+                    type="date"
+                    className="form-input"
+                    value={editEndDate}
+                    onChange={(e) => setEditEndDate(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {editStartDate && editEndDate && editEndDate >= editStartDate && (
+                <div style={{
+                  fontSize: '0.825rem',
+                  color: 'var(--accent-cyan)',
+                  marginBottom: '20px',
+                  padding: '8px 12px',
+                  background: 'rgba(56, 189, 248, 0.08)',
+                  borderRadius: 'var(--radius-sm)',
+                  border: '1px solid rgba(56, 189, 248, 0.2)'
+                }}>
+                  Trip Duration: <strong>{getDatesInRange(editStartDate, editEndDate).length} Days</strong>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '20px' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowDatesModal(false)}
+                  className="btn btn-secondary"
+                  disabled={isSavingDates}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSaveDates(false)}
+                  className="btn btn-primary"
+                  disabled={isSavingDates}
+                >
+                  {isSavingDates ? 'Saving Dates...' : 'Save Dates'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </Modal>
 
     </div>

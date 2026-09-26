@@ -5,6 +5,7 @@ import { formatDuration } from '../utils/formatters';
 const ActivityCard = ({
   activity = {},
   onRemove,
+  onDelete,
   onEdit,
   onMoveUp,
   onMoveDown,
@@ -14,6 +15,14 @@ const ActivityCard = ({
   onAddRecommendation
 }) => {
   if (!activity) return null;
+
+  const handleDelete = () => {
+    if (onDelete) {
+      onDelete(activity);
+    } else if (onRemove) {
+      onRemove(activity.id || activity);
+    }
+  };
 
   const formatCost = (val) => {
     const num = Number(val);
@@ -146,8 +155,14 @@ const ActivityCard = ({
               </button>
             )}
 
-            {onRemove && (
-              <button onClick={() => onRemove(activity.id)} className="btn-icon" style={{ width: '32px', height: '32px', color: '#fca5a5' }} title="Remove Activity">
+            {(onRemove || onDelete) && (
+              <button
+                type="button"
+                onClick={handleDelete}
+                className="btn-icon"
+                style={{ width: '32px', height: '32px', color: '#fca5a5' }}
+                title="Delete Activity"
+              >
                 <Trash2 size={13} />
               </button>
             )}

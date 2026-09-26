@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { getTripById, getTripItinerary } from '../services/api';
+import { getTripById, getTripItinerary, updateTripCover, deleteActivity } from '../services/api';
 import { formatDuration } from '../utils/formatters';
+import Modal from '../components/Modal';
 import {
   ArrowLeft,
   Edit3,
@@ -16,7 +17,10 @@ import {
   Check,
   Compass,
   AlertTriangle,
-  Info
+  Info,
+  Trash2,
+  Upload,
+  CheckCircle2
 } from 'lucide-react';
 
 const ItineraryView = () => {
@@ -32,6 +36,17 @@ const ItineraryView = () => {
   const [loadError, setLoadError] = useState('');
   const [copied, setCopied] = useState(false);
   const [selectedDayId, setSelectedDayId] = useState(null);
+
+  const [isUploadingCover, setIsUploadingCover] = useState(false);
+  const [activityToDelete, setActivityToDelete] = useState(null);
+  const [isDeletingActivity, setIsDeletingActivity] = useState(false);
+  const [toastMsg, setToastMsg] = useState('');
+  const coverInputRef = useRef(null);
+
+  const showToast = (msg) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(''), 3000);
+  };
 
   useEffect(() => {
     const loadTripData = async () => {
@@ -86,6 +101,53 @@ const ItineraryView = () => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
+  };
+
+  const handleCoverFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      showToast('Please select a valid image file (JPEG, PNG, WebP).');
+      return;
+    }
+
+    setIsUploadingCover(true);
+    try {
+      const { data: updatedTrip, coverUrl: newCoverUrl, error } = await updateTripCover(trip.id, file);
+      if (error || !updatedTrip) {
+        showToast('Failed to upload cover image. Please try again.');
+      } else {
+        setTrip(prev => ({ ...prev, cover_image_url: newCoverUrl || updatedTrip.cover_image_url }));
+        showToast('Trip cover image updated successfully');
+      }
+    } catch (err) {
+      showToast('Unable to upload cover image.');
+    } finally {
+      setIsUploadingCover(false);
+      if (coverInputRef.current) coverInputRef.current.value = '';
+    }
+  };
+
+  const handleDeleteActivity = async () => {
+    if (!activityToDelete) return;
+    setIsDeletingActivity(true);
+
+    try {
+      const res = await deleteActivity(activityToDelete.id);
+      if (res.error) {
+        showToast(`Failed to delete activity: ${res.error.message || res.error}`);
+        return;
+      }
+
+      setActivities(prev => prev.filter(a => a.id !== activityToDelete.id));
+      showToast('Activity removed from itinerary');
+      setActivityToDelete(null);
+    } catch (err) {
+      console.error('Error deleting activity:', err);
+      showToast('Error deleting activity');
+    } finally {
+      setIsDeletingActivity(false);
+    }
   };
 
   const activeDay = days.find(d => d.id === selectedDayId) || days[0] || null;
@@ -193,6 +255,40 @@ const ItineraryView = () => {
               justifyContent: 'center'
             }}>
               <Compass size={64} style={{ color: 'rgba(255,255,255,0.15)' }} />
+            </div>
+          )}
+
+          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(9, 12, 18, 0.95) 0%, rgba(9, 12, 18, 0.2) 60%, transparent 100%)' }} />
+
+          {/* Change Cover Button (for Owner) */}
+          {isOwner && (
+            <div style={{ position: 'absolute', top: '16px', right: '16px', zIndex: 10 }}>
+              <button
+                onClick={() => coverInputRef.current?.click()}
+                disabled={isUploadingCover}
+                className="btn"
+                style={{
+                  padding: '6px 12px',
+                  fontSize: '0.8rem',
+                  backgroundColor: 'rgba(15, 23, 42, 0.75)',
+                  backdropFilter: 'blur(8px)',
+                  color: '#fff',
+                  border: '1px solid rgba(255, 255, 255, 0.25)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <Upload size={14} />
+                <span>{isUploadingCover ? 'Uploading...' : 'Change Cover'}</span>
+              </button>
+              <input
+                ref={coverInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/jpg"
+                style={{ display: 'none' }}
+                onChange={handleCoverFileChange}
+              />
             </div>
           )}
 
@@ -381,8 +477,21 @@ const ItineraryView = () => {
                       )}
                     </div>
 
-                    <div style={{ fontWeight: 800, fontSize: '0.95rem', color: act.estimated_cost ? 'var(--text-primary)' : 'var(--accent-emerald)', whiteSpace: 'nowrap', marginLeft: '16px' }}>
-                      {Number(act.estimated_cost) > 0 ? `₹${Number(act.estimated_cost).toLocaleString()}` : 'Free'}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginLeft: '16px' }}>
+                      <div style={{ fontWeight: 800, fontSize: '0.95rem', color: act.estimated_cost ? 'var(--text-primary)' : 'var(--accent-emerald)', whiteSpace: 'nowrap' }}>
+                        {Number(act.estimated_cost) > 0 ? `₹${Number(act.estimated_cost).toLocaleString()}` : 'Free'}
+                      </div>
+                      {isOwner && (
+                        <button
+                          type="button"
+                          onClick={() => setActivityToDelete(act)}
+                          className="btn-icon"
+                          style={{ width: '32px', height: '32px', color: '#fca5a5' }}
+                          title="Delete Activity"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -513,6 +622,53 @@ const ItineraryView = () => {
           </div>
         )}
       </section>
+
+      {/* Toast Feedback */}
+      {toastMsg && (
+        <div style={{
+          position: 'fixed', bottom: '24px', right: '24px', zIndex: 1000,
+          backgroundColor: 'rgba(15, 23, 42, 0.95)', border: '1px solid var(--primary)',
+          borderRadius: 'var(--radius-md)', padding: '14px 20px', color: '#fff',
+          boxShadow: 'var(--shadow-lg)', backdropFilter: 'blur(16px)',
+          display: 'flex', alignItems: 'center', gap: '10px'
+        }}>
+          <CheckCircle2 size={18} style={{ color: 'var(--primary)' }} />
+          <span>{toastMsg}</span>
+        </div>
+      )}
+
+      {/* MODAL: DELETE ACTIVITY CONFIRMATION */}
+      <Modal
+        isOpen={Boolean(activityToDelete)}
+        onClose={() => { if (!isDeletingActivity) setActivityToDelete(null); }}
+        title="Delete activity?"
+        maxWidth="440px"
+      >
+        <div>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.6, marginBottom: '20px' }}>
+            Are you sure you want to remove <strong style={{ color: 'var(--text-primary)' }}>{activityToDelete?.title}</strong> from your itinerary?
+          </p>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+            <button
+              type="button"
+              onClick={() => setActivityToDelete(null)}
+              className="btn btn-secondary"
+              disabled={isDeletingActivity}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleDeleteActivity}
+              className="btn"
+              style={{ backgroundColor: '#ef4444', color: '#fff', padding: '8px 18px', fontWeight: 600 }}
+              disabled={isDeletingActivity}
+            >
+              {isDeletingActivity ? 'Deleting...' : 'Delete'}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
     </div>
   );
