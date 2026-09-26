@@ -1861,6 +1861,90 @@ export const resolveLocationName = async (latitude, longitude) => {
   };
 };
 
+export const geocodeDestination = async (query) => {
+  if (!query || typeof query !== 'string' || !query.trim()) return null;
+  try {
+    const res = await fetch('/api/places/geocode', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: query.trim() })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && Number.isFinite(data.latitude) && Number.isFinite(data.longitude)) {
+        return {
+          destination: data.destination || data.city || query.trim(),
+          city: data.city || data.destination || query.trim(),
+          country: data.country || '',
+          country_code: data.country_code || '',
+          latitude: Number(data.latitude),
+          longitude: Number(data.longitude),
+          place_id: data.place_id || '',
+          formatted_address: data.formatted_address || query.trim(),
+          source: data.source || 'Backend Geocoding'
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('Backend geocode destination warning:', err);
+  }
+  return null;
+};
+
+export const resolveDestinationLocation = async (destinationName) => {
+  if (!destinationName || typeof destinationName !== 'string' || !destinationName.trim()) {
+    return null;
+  }
+  const rawQ = destinationName.trim();
+
+  // Create list of search candidates (e.g. for "Kyoto & Osaka", try ["Kyoto & Osaka", "Kyoto", "Osaka"])
+  const candidateQueries = [rawQ];
+  const splitParts = rawQ.split(/[&,/+\-]|and/i).map(s => s.trim()).filter(s => s.length >= 2);
+  for (const part of splitParts) {
+    if (!candidateQueries.includes(part)) {
+      candidateQueries.push(part);
+    }
+  }
+
+  // 1. Try Google Places Autocomplete + Place Details for candidate queries
+  for (const q of candidateQueries) {
+    try {
+      const autocompleteRes = await getPlacesAutocomplete(q);
+      if (autocompleteRes && autocompleteRes.success && Array.isArray(autocompleteRes.predictions) && autocompleteRes.predictions.length > 0) {
+        const topPred = autocompleteRes.predictions[0];
+        if (topPred.place_id) {
+          const details = await getPlaceDetails(topPred.place_id);
+          if (details && details.success && Number.isFinite(details.latitude) && Number.isFinite(details.longitude)) {
+            return {
+              destination: details.destination || details.name || topPred.main_text || q,
+              city: details.destination || topPred.main_text || q,
+              country: details.country || '',
+              country_code: details.country_code || '',
+              latitude: Number(details.latitude),
+              longitude: Number(details.longitude),
+              place_id: details.place_id || topPred.place_id,
+              formatted_address: details.formatted_address || topPred.description || q,
+              source: 'Google Places'
+            };
+          }
+        }
+      }
+    } catch (err) {
+      console.warn(`Google Places resolution warning for "${q}":`, err);
+    }
+  }
+
+  // 2. Server-side geocoding proxy (/api/places/geocode) - Safe from server, NO browser CORS
+  for (const q of candidateQueries) {
+    const serverResult = await geocodeDestination(q);
+    if (serverResult) {
+      return serverResult;
+    }
+  }
+
+  return null;
+};
+
 const calculateHaversineDistance = (lat1, lon1, lat2, lon2) => {
   const R = 6371; // Earth's radius in km
   const dLat = (lat2 - lat1) * (Math.PI / 180);
@@ -1924,6 +2008,7 @@ export const getDiscoverContext = async (userId) => {
     return {
       hasTrip: false,
       activeTrip: null,
+      activeTripLocation: null,
       stops: [],
       todayDate: todayStr,
       dayIndex: 1,
@@ -1941,6 +2026,7 @@ export const getDiscoverContext = async (userId) => {
     return {
       hasTrip: false,
       activeTrip: null,
+      activeTripLocation: null,
       stops: [],
       todayDate: todayStr,
       dayIndex: 1,
@@ -1961,6 +2047,7 @@ export const getDiscoverContext = async (userId) => {
     return {
       hasTrip: false,
       activeTrip: null,
+      activeTripLocation: null,
       stops: [],
       todayDate: todayStr,
       dayIndex: 1,
@@ -1971,6 +2058,23 @@ export const getDiscoverContext = async (userId) => {
       occupiedItems: [],
       availableWindows: []
     };
+  }
+
+  const destName = activeTrip.destination || activeTrip.title || activeTrip.name;
+  let activeTripLocation = null;
+  if (Number.isFinite(activeTrip.latitude) && Number.isFinite(activeTrip.longitude)) {
+    activeTripLocation = {
+      destination: destName,
+      city: destName,
+      country: activeTrip.country || '',
+      country_code: activeTrip.country_code || '',
+      latitude: Number(activeTrip.latitude),
+      longitude: Number(activeTrip.longitude),
+      formatted_address: activeTrip.formatted_address || destName,
+      source: 'Trip Details'
+    };
+  } else if (destName) {
+    activeTripLocation = await resolveDestinationLocation(destName);
   }
 
   const itineraryRes = await getTripItinerary(activeTrip.id);
@@ -2002,10 +2106,11 @@ export const getDiscoverContext = async (userId) => {
   return {
     hasTrip: true,
     activeTrip,
+    activeTripLocation,
     stops: days,
     todayDate: todayStr,
     dayIndex,
-    destination: activeTrip.destination || activeTrip.title || activeTrip.name,
+    destination: destName,
     availableTimeMinutes: freeMinutes,
     availableTimeFormatted,
     remainingBudget,

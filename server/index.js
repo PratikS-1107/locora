@@ -129,6 +129,112 @@ router.post('/places/reverse-geocode', async (req, res) => {
   }
 });
 
+// POST /api/places/geocode - Server-side Geocoding for any destination query (no client-side CORS issues)
+router.post('/places/geocode', async (req, res) => {
+  try {
+    const query = (req.body?.query || req.body?.destination || req.query?.query || '').trim();
+    if (!query) {
+      return res.status(400).json({ success: false, error: 'query is required' });
+    }
+
+    const googleApiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY;
+
+    // 1. Try Google Maps Geocoding API if key available
+    if (googleApiKey && googleApiKey !== 'YOUR_GOOGLE_API_KEY') {
+      try {
+        const geoUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(query)}&key=${googleApiKey}`;
+        const geoRes = await fetch(geoUrl);
+        if (geoRes.ok) {
+          const data = await geoRes.json();
+          if (data.status === 'OK' && Array.isArray(data.results) && data.results.length > 0) {
+            const result = data.results[0];
+            const lat = result.geometry?.location?.lat;
+            const lng = result.geometry?.location?.lng;
+            let city = '';
+            let state = '';
+            let country = '';
+            let countryCode = '';
+
+            const components = result.address_components || [];
+            for (const c of components) {
+              if (c.types.includes('locality') || c.types.includes('administrative_area_level_2')) {
+                city = c.long_name;
+              }
+              if (c.types.includes('administrative_area_level_1')) {
+                state = c.long_name;
+              }
+              if (c.types.includes('country')) {
+                country = c.long_name;
+                countryCode = c.short_name;
+              }
+            }
+
+            return res.json({
+              success: true,
+              destination: city || query,
+              city: city || query,
+              state: state || '',
+              country: country || '',
+              country_code: countryCode || '',
+              latitude: Number(lat),
+              longitude: Number(lng),
+              formatted_address: result.formatted_address || query,
+              place_id: result.place_id || '',
+              source: 'Google Maps Geocoding'
+            });
+          }
+        }
+      } catch (gErr) {
+        console.warn('Google geocoding warning:', gErr);
+      }
+    }
+
+    // 2. Server-side OpenStreetMap / Nominatim geocoding (Safe from server, no browser CORS)
+    try {
+      const osmUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`;
+      const osmRes = await fetch(osmUrl, {
+        headers: { 'User-Agent': 'LocoraTravelApp/1.0 (contact@locora.app)' }
+      });
+      if (osmRes.ok) {
+        const osmData = await osmRes.json();
+        if (Array.isArray(osmData) && osmData.length > 0) {
+          const item = osmData[0];
+          const lat = parseFloat(item.lat);
+          const lng = parseFloat(item.lon);
+          if (Number.isFinite(lat) && Number.isFinite(lng)) {
+            const parts = (item.display_name || '').split(',');
+            const mainCity = parts[0]?.trim() || query;
+            const countryName = parts[parts.length - 1]?.trim() || '';
+            return res.json({
+              success: true,
+              destination: mainCity,
+              city: mainCity,
+              state: '',
+              country: countryName,
+              country_code: '',
+              latitude: lat,
+              longitude: lng,
+              formatted_address: item.display_name || query,
+              place_id: `osm_${item.osm_id || item.place_id || 'dest'}`,
+              source: 'OpenStreetMap Geocoding'
+            });
+          }
+        }
+      }
+    } catch (osmErr) {
+      console.warn('OSM server geocoding warning:', osmErr);
+    }
+
+    return res.json({
+      success: false,
+      error: 'Unable to geocode destination'
+    });
+  } catch (err) {
+    console.error('Error in geocode endpoint:', err);
+    return res.status(500).json({ success: false, error: 'Server error geocoding destination' });
+  }
+});
+
 // POST /api/places/autocomplete - Real Google Places predictions with server-side API key
 router.post('/places/autocomplete', async (req, res) => {
   try {
