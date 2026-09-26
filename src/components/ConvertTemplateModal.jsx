@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import Modal from './Modal';
 import { Compass, Sparkles, AlertCircle, Coins } from 'lucide-react';
+import { getTodayLocalDateString } from '../utils/formatters';
 
 const getDefaultStartDate = () => {
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
-  return tomorrow.toISOString().split('T')[0];
+  return getTodayLocalDateString(tomorrow);
 };
 
 const calculateEndDate = (startStr, daysCount) => {
@@ -13,7 +14,7 @@ const calculateEndDate = (startStr, daysCount) => {
   const d = new Date(startStr);
   const days = Math.max(1, Number(daysCount) || 5);
   d.setDate(d.getDate() + (days - 1));
-  return d.toISOString().split('T')[0];
+  return getTodayLocalDateString(d);
 };
 
 const getTemplateDefaultBudget = (template) => {
@@ -107,7 +108,7 @@ const ConvertTemplateModal = ({
     });
   };
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getTodayLocalDateString();
 
   return (
     <Modal

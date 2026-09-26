@@ -1,8 +1,28 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { createTrip, updateTrip, getTripById, uploadTripCover } from '../services/api';
-import { Sparkles, Calendar, MapPin, Image as ImageIcon, ArrowRight, Upload, X, CheckCircle2 } from 'lucide-react';
+import {
+  createTrip,
+  updateTrip,
+  getTripById,
+  uploadTripCover,
+  getPlacesAutocomplete,
+  getPlaceDetails
+} from '../services/api';
+import { getTodayLocalDateString } from '../utils/formatters';
+import {
+  Sparkles,
+  Calendar,
+  MapPin,
+  Image as ImageIcon,
+  ArrowRight,
+  Upload,
+  X,
+  CheckCircle2,
+  Search,
+  Loader2,
+  Check
+} from 'lucide-react';
 
 const CreateTrip = () => {
   const { user } = useAuth();
@@ -11,8 +31,20 @@ const CreateTrip = () => {
   const location = useLocation();
 
   const isEditMode = Boolean(id);
+  const todayStr = getTodayLocalDateString();
 
   const [tripName, setTripName] = useState('');
+  const [destination, setDestination] = useState('');
+  const [country, setCountry] = useState('');
+  const [countryCode, setCountryCode] = useState('');
+  const [placeId, setPlaceId] = useState('');
+  const [formattedAddress, setFormattedAddress] = useState('');
+  const [destInput, setDestInput] = useState('');
+  const [destSuggestions, setDestSuggestions] = useState([]);
+  const [isSearchingDest, setIsSearchingDest] = useState(false);
+  const [isDestSelected, setIsDestSelected] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [budget, setBudget] = useState(30000);
@@ -25,12 +57,62 @@ const CreateTrip = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
+  const searchContainerRef = useRef(null);
+
+  // Close suggestions when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Debounced Google Places autocomplete search
+  useEffect(() => {
+    if (!destInput.trim() || isDestSelected) {
+      setDestSuggestions([]);
+      setIsSearchingDest(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearchingDest(true);
+      try {
+        const res = await getPlacesAutocomplete(destInput);
+        if (res.success && Array.isArray(res.predictions)) {
+          setDestSuggestions(res.predictions);
+          setShowSuggestions(true);
+        } else {
+          setDestSuggestions([]);
+        }
+      } catch (err) {
+        console.error('Destination autocomplete search error:', err);
+        setDestSuggestions([]);
+      } finally {
+        setIsSearchingDest(false);
+      }
+    }, 280);
+
+    return () => clearTimeout(timer);
+  }, [destInput, isDestSelected]);
+
   // Load existing trip details if in Edit mode
   useEffect(() => {
     if (isEditMode && id) {
       getTripById(id).then(({ data }) => {
         if (data) {
           setTripName(data.name || data.title || '');
+          const existingDest = data.destination || data.city || '';
+          setDestination(existingDest);
+          setDestInput(existingDest);
+          setCountry(data.country || '');
+          setCountryCode(data.country_code || '');
+          if (existingDest) {
+            setIsDestSelected(true);
+          }
           setStartDate(data.start_date || '');
           setEndDate(data.end_date || '');
           if (data.budget !== undefined) setBudget(data.budget);
@@ -41,11 +123,47 @@ const CreateTrip = () => {
     }
   }, [id, isEditMode]);
 
+  const handleSelectPrediction = async (prediction) => {
+    const destName = prediction.main_text || prediction.description;
+    setDestInput(destName);
+    setDestination(destName);
+    setPlaceId(prediction.place_id || '');
+    setFormattedAddress(prediction.description || '');
+    setIsDestSelected(true);
+    setShowSuggestions(false);
+    setErrorMsg('');
+
+    // Fetch place details for country, country_code, lat, lng
+    if (prediction.place_id) {
+      try {
+        const details = await getPlaceDetails(prediction.place_id);
+        if (details && details.success) {
+          if (details.country) setCountry(details.country);
+          if (details.country_code) setCountryCode(details.country_code);
+          if (details.destination) setDestination(details.destination);
+          if (details.formatted_address) setFormattedAddress(details.formatted_address);
+        }
+      } catch (err) {
+        console.warn('Place details fetch warning:', err);
+      }
+    }
+  };
+
+  const handleClearDestination = () => {
+    setDestination('');
+    setCountry('');
+    setCountryCode('');
+    setPlaceId('');
+    setFormattedAddress('');
+    setDestInput('');
+    setIsDestSelected(false);
+    setDestSuggestions([]);
+  };
+
   const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate file type
     if (!file.type.startsWith('image/')) {
       setErrorMsg('Please select a valid image file (JPEG, PNG, WebP).');
       return;
@@ -73,15 +191,31 @@ const CreateTrip = () => {
     e.preventDefault();
     setErrorMsg('');
 
-    // Validation
+    // Form Validations
     if (!tripName.trim()) {
       setErrorMsg('Trip Name is required.');
+      return;
+    }
+
+    if (!destination.trim() || !isDestSelected) {
+      setErrorMsg('Destination is required. Please search and select a verified destination from the suggestions.');
       return;
     }
 
     if (!startDate || !endDate) {
       setErrorMsg('Please specify both Start Date and End Date.');
       return;
+    }
+
+    if (!isEditMode) {
+      if (startDate < todayStr) {
+        setErrorMsg('Start Date cannot be in the past for a new trip.');
+        return;
+      }
+      if (endDate < todayStr) {
+        setErrorMsg('End Date cannot be in the past for a new trip.');
+        return;
+      }
     }
 
     if (endDate < startDate) {
@@ -95,16 +229,19 @@ const CreateTrip = () => {
       if (isEditMode) {
         // Edit existing trip
         const { data, error } = await updateTrip(id, {
-          title: tripName,
+          title: tripName.trim(),
+          destination: destination.trim(),
+          country: country.trim(),
+          country_code: countryCode.trim(),
           start_date: startDate,
           end_date: endDate,
           budget: Number(budget) || 0,
-          description,
+          description: description.trim(),
           cover_image_url: coverPhoto || null
         });
 
         if (error) {
-          setErrorMsg('Unable to update this trip. Please try again.');
+          setErrorMsg(error.message || 'Unable to update this trip. Please try again.');
         } else {
           setToastMsg('Trip updated successfully.');
           setTimeout(() => navigate('/my-trips'), 1200);
@@ -118,16 +255,19 @@ const CreateTrip = () => {
 
         const { data, error } = await createTrip({
           userId: user.id,
-          title: tripName,
+          title: tripName.trim(),
+          destination: destination.trim(),
+          country: country.trim(),
+          country_code: countryCode.trim(),
           startDate,
           endDate,
           budget: Number(budget) || 0,
-          description,
+          description: description.trim(),
           coverImage: coverPhoto || null
         });
 
         if (error || !data) {
-          setErrorMsg('Unable to create this trip. Please try again.');
+          setErrorMsg(error?.message || 'Unable to create this trip. Please try again.');
         } else {
           setToastMsg('Trip created successfully!');
           // Redirect straight to itinerary edit builder
@@ -139,7 +279,7 @@ const CreateTrip = () => {
         }
       }
     } catch (err) {
-      setErrorMsg(isEditMode ? 'Unable to update trip.' : 'Unable to create trip.');
+      setErrorMsg(err.message || (isEditMode ? 'Unable to update trip.' : 'Unable to create trip.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -168,7 +308,7 @@ const CreateTrip = () => {
           {isEditMode ? 'Edit Trip Details' : 'Create New Trip'}
         </h1>
         <p style={{ fontSize: '0.925rem', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
-          {isEditMode ? 'Update your trip destination, dates, and cover.' : 'Start your custom itinerary. Add destinations and schedule activities next.'}
+          {isEditMode ? 'Update your trip destination, dates, and cover.' : 'Start your custom itinerary. Add destination and schedule activities next.'}
         </p>
       </div>
 
@@ -184,12 +324,14 @@ const CreateTrip = () => {
               border: '1px solid rgba(239, 68, 68, 0.3)',
               color: '#fca5a5',
               fontSize: '0.85rem',
-              marginBottom: '20px'
+              marginBottom: '20px',
+              lineHeight: 1.5
             }}>
               {errorMsg}
             </div>
           )}
 
+          {/* Trip Name */}
           <div className="form-group" style={{ marginBottom: '18px' }}>
             <label className="form-label" style={{ fontWeight: 600, fontSize: '0.825rem' }}>Trip Name *</label>
             <input
@@ -203,6 +345,148 @@ const CreateTrip = () => {
             />
           </div>
 
+          {/* Destination Search with Real Google Places Autocomplete */}
+          <div className="form-group" style={{ marginBottom: '18px', position: 'relative' }} ref={searchContainerRef}>
+            <label className="form-label" style={{ fontWeight: 600, fontSize: '0.825rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span>Destination *</span>
+              {isDestSelected && destination && (
+                <span style={{ fontSize: '0.75rem', color: 'var(--accent-emerald)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Check size={12} /> Verified Location
+                </span>
+              )}
+            </label>
+
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <div style={{ position: 'absolute', left: '12px', pointerEvents: 'none', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
+                {isSearchingDest ? (
+                  <Loader2 size={16} className="animate-spin" style={{ color: 'var(--primary)' }} />
+                ) : (
+                  <Search size={16} />
+                )}
+              </div>
+
+              <input
+                type="text"
+                required
+                className="form-input"
+                placeholder="Search for a city or destination (e.g. Mumbai, Kyoto, Paris)..."
+                value={destInput}
+                onChange={(e) => {
+                  setDestInput(e.target.value);
+                  setIsDestSelected(false);
+                  setErrorMsg('');
+                }}
+                onFocus={() => {
+                  if (destSuggestions.length > 0 && !isDestSelected) {
+                    setShowSuggestions(true);
+                  }
+                }}
+                style={{
+                  height: '44px',
+                  fontSize: '0.9rem',
+                  paddingLeft: '38px',
+                  paddingRight: isDestSelected ? '38px' : '12px',
+                  borderColor: isDestSelected ? 'rgba(0, 196, 140, 0.4)' : undefined
+                }}
+              />
+
+              {isDestSelected && (
+                <button
+                  type="button"
+                  onClick={handleClearDestination}
+                  style={{
+                    position: 'absolute',
+                    right: '10px',
+                    background: 'rgba(255, 255, 255, 0.08)',
+                    border: 'none',
+                    borderRadius: '50%',
+                    width: '24px',
+                    height: '24px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'var(--text-muted)',
+                    cursor: 'pointer'
+                  }}
+                  title="Clear selected destination"
+                >
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+
+            {/* Selected Destination Pill */}
+            {isDestSelected && destination && (
+              <div style={{
+                marginTop: '8px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '4px 10px',
+                borderRadius: 'var(--radius-sm)',
+                backgroundColor: 'rgba(0, 196, 140, 0.1)',
+                border: '1px solid rgba(0, 196, 140, 0.3)',
+                fontSize: '0.775rem',
+                color: 'var(--accent-emerald)'
+              }}>
+                <MapPin size={12} />
+                <span style={{ fontWeight: 600 }}>{destination}</span>
+                {country && <span>· {country} {countryCode ? `(${countryCode})` : ''}</span>}
+              </div>
+            )}
+
+            {/* Google Places Autocomplete Suggestions Dropdown */}
+            {showSuggestions && destSuggestions.length > 0 && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  right: 0,
+                  zIndex: 200,
+                  marginTop: '4px',
+                  backgroundColor: 'var(--bg-surface, #0f172a)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-md)',
+                  boxShadow: '0 12px 32px rgba(0,0,0,0.5)',
+                  maxHeight: '240px',
+                  overflowY: 'auto'
+                }}
+              >
+                {destSuggestions.map((pred) => (
+                  <div
+                    key={pred.place_id || pred.description}
+                    onClick={() => handleSelectPrediction(pred)}
+                    style={{
+                      padding: '10px 14px',
+                      cursor: 'pointer',
+                      borderBottom: '1px solid rgba(255,255,255,0.05)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      transition: 'background 0.15s ease'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.06)'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                  >
+                    <MapPin size={15} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {pred.main_text || pred.description}
+                      </div>
+                      {pred.secondary_text && (
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {pred.secondary_text}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Dates */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '18px' }}>
             <div className="form-group">
               <label className="form-label" style={{ fontWeight: 600, fontSize: '0.825rem' }}>Start Date *</label>
@@ -210,6 +494,7 @@ const CreateTrip = () => {
                 type="date"
                 required
                 className="form-input"
+                min={isEditMode ? undefined : todayStr}
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
                 style={{ height: '44px', fontSize: '0.85rem' }}
@@ -222,6 +507,7 @@ const CreateTrip = () => {
                 type="date"
                 required
                 className="form-input"
+                min={startDate || (isEditMode ? undefined : todayStr)}
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
                 style={{ height: '44px', fontSize: '0.85rem' }}
@@ -229,6 +515,7 @@ const CreateTrip = () => {
             </div>
           </div>
 
+          {/* Planned Budget */}
           <div className="form-group" style={{ marginBottom: '18px' }}>
             <label className="form-label" style={{ fontWeight: 600, fontSize: '0.825rem' }}>Planned Budget (₹)</label>
             <input
@@ -243,6 +530,7 @@ const CreateTrip = () => {
             />
           </div>
 
+          {/* Description */}
           <div className="form-group" style={{ marginBottom: '18px' }}>
             <label className="form-label" style={{ fontWeight: 600, fontSize: '0.825rem' }}>Description (Optional)</label>
             <textarea

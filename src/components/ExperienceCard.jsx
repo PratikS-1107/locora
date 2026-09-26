@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Clock, MapPin, Navigation, Sparkles, CheckCircle2, Star, ExternalLink, Car, ImageOff, Heart } from 'lucide-react';
+import { formatDuration } from '../utils/formatters';
 
 const ExperienceCard = ({
   experience,
@@ -14,8 +15,8 @@ const ExperienceCard = ({
   const title = experience.name || experience.title || 'Local Place';
   const category = experience.category || 'Local';
   const description = experience.description || 'Authentic place or experience near your location.';
-  const duration = experience.duration_minutes ? `${experience.duration_minutes} min` : (experience.duration || '60 min');
-  const travelTime = experience.estimated_travel_minutes ? `~${experience.estimated_travel_minutes} min` : null;
+  const duration = formatDuration(experience.duration_minutes ?? experience.duration ?? 60);
+  const travelTime = experience.estimated_travel_minutes ? `~${formatDuration(experience.estimated_travel_minutes)}` : null;
 
   const distance = typeof experience.location === 'object' && experience.location?.distance_km !== undefined
     ? `${experience.location.distance_km} km away`

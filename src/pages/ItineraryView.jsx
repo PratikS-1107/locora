@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getTripById, getTripItinerary } from '../services/api';
+import { formatDuration } from '../utils/formatters';
 import {
   ArrowLeft,
   Edit3,
@@ -353,7 +354,7 @@ const ItineraryView = () => {
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
                         <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--primary)' }}>
-                          {act.start_time || '10:00 AM'} ({act.duration_minutes ? `${act.duration_minutes} min` : '60 min'})
+                          {act.start_time || '10:00 AM'} ({formatDuration(act.duration_minutes ?? act.duration ?? 60)})
                         </span>
                         {act.category && (
                           <span className="badge badge-primary" style={{ fontSize: '0.7rem' }}>

@@ -11,6 +11,7 @@ import {
   getSavedWishlistIds,
   toggleSaveWishlistItem
 } from '../services/api';
+import { formatDuration, getTodayLocalDateString } from '../utils/formatters';
 import ExperienceCard from '../components/ExperienceCard';
 import {
   Sparkles,
@@ -113,7 +114,7 @@ const Discover = () => {
         setContext({
           hasTrip: false,
           activeTrip: null,
-          todayDate: new Date().toISOString().split('T')[0],
+          todayDate: getTodayLocalDateString(),
           destination: null,
           availableTimeMinutes: null,
           availableTimeFormatted: null,
@@ -126,7 +127,7 @@ const Discover = () => {
       setContext({
         hasTrip: false,
         activeTrip: null,
-        todayDate: new Date().toISOString().split('T')[0],
+        todayDate: getTodayLocalDateString(),
         destination: null,
         availableTimeMinutes: null,
         availableTimeFormatted: null,
@@ -242,14 +243,14 @@ const Discover = () => {
     const availableMinutes = Number(context?.availableTimeMinutes || 0);
 
     if (availableMinutes > 0 && durationMinutes > availableMinutes) {
-      setConflictMsg(`This experience (${durationMinutes} min) exceeds your available free window (${context?.availableTimeFormatted}).`);
+      setConflictMsg(`This experience (${formatDuration(durationMinutes)}) exceeds your available free window (${context?.availableTimeFormatted}).`);
       setTimeout(() => setConflictMsg(''), 3500);
       return;
     }
 
     try {
       const tripId = context.activeTrip.id;
-      const dateStr = context.todayDate || new Date().toISOString().split('T')[0];
+      const dateStr = context.todayDate || getTodayLocalDateString();
       await addRecommendationToItinerary(rec, tripId, dateStr);
 
       setAddedIds(prev => [...prev, rec.id]);

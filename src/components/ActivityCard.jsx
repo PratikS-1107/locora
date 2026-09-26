@@ -1,5 +1,6 @@
 import React from 'react';
 import { MapPin, Trash2, Edit2, Sparkles, Navigation, ArrowUp, ArrowDown } from 'lucide-react';
+import { formatDuration } from '../utils/formatters';
 
 const ActivityCard = ({
   activity = {},
@@ -63,7 +64,7 @@ const ActivityCard = ({
             {activity.start_time || activity.time || '10:00 AM'}
           </span>
           <span style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>
-            {activity.duration_minutes ? `${activity.duration_minutes} min` : (activity.duration || '60 min')}
+            {formatDuration(activity.duration_minutes ?? activity.duration ?? 60)}
           </span>
         </div>
 

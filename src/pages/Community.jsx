@@ -9,6 +9,7 @@ import {
   toggleSaveWishlistItem,
   getTripItinerary
 } from '../services/api';
+import { getTodayLocalDateString } from '../utils/formatters';
 import TripCard from '../components/TripCard';
 import Modal from '../components/Modal';
 import {
@@ -41,7 +42,7 @@ const SORT_OPTIONS = ['Recommended', 'Newest', 'Duration'];
 const getTomorrowDate = () => {
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
-  return tomorrow.toISOString().split('T')[0];
+  return getTodayLocalDateString(tomorrow);
 };
 
 const calculateEndDate = (startDateStr, daysCount) => {
@@ -49,7 +50,7 @@ const calculateEndDate = (startDateStr, daysCount) => {
   const d = new Date(startDateStr);
   const count = Math.max(1, Number(daysCount) || 1);
   d.setDate(d.getDate() + (count - 1));
-  return d.toISOString().split('T')[0];
+  return getTodayLocalDateString(d);
 };
 
 const getTripDaysCount = (trip) => {
@@ -559,7 +560,7 @@ const Community = () => {
                   type="date"
                   className="form-input"
                   value={copyStartDate}
-                  min={new Date().toISOString().split('T')[0]}
+                  min={getTodayLocalDateString()}
                   onChange={(e) => {
                     const newStart = e.target.value;
                     setCopyStartDate(newStart);
@@ -581,7 +582,7 @@ const Community = () => {
                   type="date"
                   className="form-input"
                   value={copyEndDate}
-                  min={copyStartDate || new Date().toISOString().split('T')[0]}
+                  min={copyStartDate || getTodayLocalDateString()}
                   onChange={(e) => {
                     setCopyEndDate(e.target.value);
                     setCopyError('');

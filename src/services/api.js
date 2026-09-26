@@ -1,5 +1,6 @@
 import { supabase, isSupabaseConfigured } from './supabaseClient';
-export { supabase, isSupabaseConfigured };
+import { formatDuration, getTodayLocalDateString } from '../utils/formatters';
+export { supabase, isSupabaseConfigured, formatDuration, getTodayLocalDateString };
 
 // --- UUID VALIDATION HELPER ---
 export const isValidUUID = (id) => {
@@ -36,7 +37,7 @@ export const normalizeActivity = (act) => {
     endTime: endTime,
     duration_minutes: durationMinutes,
     durationMinutes: durationMinutes,
-    duration: `${durationMinutes} min`,
+    duration: formatDuration(durationMinutes),
     estimated_cost: estimatedCost,
     estimatedCost: estimatedCost,
     cost: estimatedCost,
@@ -688,6 +689,107 @@ export const getTripById = async (tripId) => {
   }
 };
 
+// --- PLACES AUTOCOMPLETE & DETAILS (Backend Proxy - Server-Side Google API Key) ---
+export const getPlacesAutocomplete = async (input) => {
+  if (!input || !input.trim()) {
+    return { success: true, predictions: [] };
+  }
+  try {
+    const res = await fetch('/api/places/autocomplete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input: input.trim() })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return { success: true, predictions: data.predictions || [] };
+    }
+    return { success: false, predictions: [] };
+  } catch (err) {
+    console.error('getPlacesAutocomplete error:', err);
+    return { success: false, predictions: [] };
+  }
+};
+
+export const getPlaceDetails = async (placeId) => {
+  if (!placeId) {
+    return { success: false, error: 'place_id is required' };
+  }
+  try {
+    const res = await fetch('/api/places/details', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ place_id: placeId })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return data;
+    }
+    return { success: false, error: 'Failed to fetch place details' };
+  } catch (err) {
+    console.error('getPlaceDetails error:', err);
+    return { success: false, error: err.message };
+  }
+};
+
+/**
+ * Check if the specified date range overlaps with any existing personal trip for the user.
+ * Overlap condition:
+ *   existing.start_date <= new_end_date AND existing.end_date >= new_start_date
+ * Only checks personal trips for the same authenticated user.
+ */
+export const checkTripDateOverlap = async (userId, startDate, endDate, excludeTripId = null) => {
+  if (!userId || !startDate || !endDate) return { hasOverlap: false, conflictingTrip: null };
+
+  if (!isSupabaseConfigured()) {
+    const localTrips = getLocalTrips();
+    const conflict = localTrips.find(t => {
+      if (t.user_id !== userId) return false;
+      if (t.trip_source && t.trip_source !== 'personal') return false;
+      if (excludeTripId && t.id === excludeTripId) return false;
+      if (!t.start_date || !t.end_date) return false;
+      return t.start_date <= endDate && t.end_date >= startDate;
+    });
+    return { hasOverlap: Boolean(conflict), conflictingTrip: conflict || null };
+  }
+
+  try {
+    let query = supabase
+      .from('trips')
+      .select('id, title, start_date, end_date, trip_source, user_id')
+      .eq('user_id', userId)
+      .eq('trip_source', 'personal')
+      .lte('start_date', endDate)
+      .gte('end_date', startDate);
+
+    if (excludeTripId) {
+      query = query.neq('id', excludeTripId);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      console.warn('Supabase overlap query warning, checking user trips:', error.message);
+      const { data: userTrips } = await getUserTrips(userId);
+      if (userTrips) {
+        const conflict = userTrips.find(t => {
+          if (t.trip_source && t.trip_source !== 'personal') return false;
+          if (excludeTripId && t.id === excludeTripId) return false;
+          if (!t.start_date || !t.end_date) return false;
+          return t.start_date <= endDate && t.end_date >= startDate;
+        });
+        return { hasOverlap: Boolean(conflict), conflictingTrip: conflict || null };
+      }
+      return { hasOverlap: false, conflictingTrip: null };
+    }
+
+    const hasOverlap = Array.isArray(data) && data.length > 0;
+    return { hasOverlap, conflictingTrip: hasOverlap ? data[0] : null };
+  } catch (err) {
+    console.error('Trip overlap check catch:', err);
+    return { hasOverlap: false, conflictingTrip: null };
+  }
+};
+
 export const createTrip = async (tripData) => {
   const userId = tripData.userId || tripData.user_id;
   if (!userId || (isSupabaseConfigured() && !isValidUUID(userId))) {
@@ -707,6 +809,29 @@ export const createTrip = async (tripData) => {
   const trip_source = tripData.trip_source || 'personal';
   const cover_image_url = tripData.cover_image_url || tripData.coverImage || tripData.cover_image || null;
   const budget = tripData.budget !== undefined && tripData.budget !== null && !isNaN(Number(tripData.budget)) ? Number(tripData.budget) : 0;
+
+  // Date validation for new trips
+  const todayStr = getTodayLocalDateString();
+  if (start_date && start_date < todayStr) {
+    return { data: null, error: new Error('Start date cannot be in the past for a new trip.') };
+  }
+  if (end_date && start_date && end_date < start_date) {
+    return { data: null, error: new Error('End date cannot be before start date.') };
+  }
+  if (end_date && end_date < todayStr) {
+    return { data: null, error: new Error('End date cannot be in the past for a new trip.') };
+  }
+
+  // Prevent overlapping personal trips
+  if (start_date && end_date && trip_source === 'personal') {
+    const { hasOverlap } = await checkTripDateOverlap(userId, start_date, end_date);
+    if (hasOverlap) {
+      return {
+        data: null,
+        error: new Error('You already have a trip scheduled during these dates. Please choose different dates.')
+      };
+    }
+  }
 
   if (!isSupabaseConfigured()) {
     const newTrip = normalizeTrip({
@@ -802,6 +927,30 @@ export const updateTrip = async (tripId, updates) => {
   if (updates.is_public !== undefined) payload.is_public = Boolean(updates.is_public);
   if (updates.budget !== undefined && updates.budget !== null) {
     payload.budget = Number(updates.budget) || 0;
+  }
+
+  // Validate dates and check overlap on update
+  if (payload.start_date || payload.end_date) {
+    const { data: existingTrip } = await getTripById(tripId);
+    if (existingTrip) {
+      const effectiveStart = payload.start_date || existingTrip.start_date;
+      const effectiveEnd = payload.end_date || existingTrip.end_date;
+      const userId = existingTrip.user_id;
+
+      if (effectiveStart && effectiveEnd && effectiveEnd < effectiveStart) {
+        return { data: null, error: new Error('End date cannot be before start date.') };
+      }
+
+      if (effectiveStart && effectiveEnd && userId && (existingTrip.trip_source === 'personal' || !existingTrip.trip_source)) {
+        const { hasOverlap } = await checkTripDateOverlap(userId, effectiveStart, effectiveEnd, tripId);
+        if (hasOverlap) {
+          return {
+            data: null,
+            error: new Error('You already have a trip scheduled during these dates. Please choose different dates.')
+          };
+        }
+      }
+    }
   }
 
   if (!isSupabaseConfigured()) {
@@ -1531,16 +1680,21 @@ export const fetchGoogleNearbyPlaces = async ({ latitude, longitude, intent = 'l
 // --- DISCOVER ITINERARY CONTEXT BUILDER ---
 
 export const getDiscoverContext = async (userId) => {
+  const todayStr = getTodayLocalDateString();
+
   if (!userId) {
     return {
       hasTrip: false,
       activeTrip: null,
-      todayDate: new Date().toISOString().split('T')[0],
+      stops: [],
+      todayDate: todayStr,
+      dayIndex: 1,
       destination: null,
       availableTimeMinutes: null,
       availableTimeFormatted: null,
       remainingBudget: null,
-      occupiedItems: []
+      occupiedItems: [],
+      availableWindows: []
     };
   }
 
@@ -1549,28 +1703,35 @@ export const getDiscoverContext = async (userId) => {
     return {
       hasTrip: false,
       activeTrip: null,
-      todayDate: new Date().toISOString().split('T')[0],
+      stops: [],
+      todayDate: todayStr,
+      dayIndex: 1,
       destination: null,
       availableTimeMinutes: null,
       availableTimeFormatted: null,
       remainingBudget: null,
-      occupiedItems: []
+      occupiedItems: [],
+      availableWindows: []
     };
   }
 
-  const todayStr = new Date().toISOString().split('T')[0];
-  const activeTrip = userTrips.find(t => t.start_date <= todayStr && t.end_date >= todayStr) || userTrips[0];
+  // Single Active Trip Rule: Only a personal trip currently containing today's date
+  const personalTrips = userTrips.filter(t => (t.trip_source === 'personal' || !t.trip_source) && t.start_date && t.end_date);
+  const activeTrip = personalTrips.find(t => t.start_date <= todayStr && t.end_date >= todayStr) || null;
 
   if (!activeTrip) {
     return {
       hasTrip: false,
       activeTrip: null,
+      stops: [],
       todayDate: todayStr,
+      dayIndex: 1,
       destination: null,
       availableTimeMinutes: null,
       availableTimeFormatted: null,
       remainingBudget: null,
-      occupiedItems: []
+      occupiedItems: [],
+      availableWindows: []
     };
   }
 
@@ -1589,14 +1750,14 @@ export const getDiscoverContext = async (userId) => {
   const freeMinutes = Math.max(0, (10 * 60) - occupiedMinutes);
   const hours = Math.floor(freeMinutes / 60);
   const mins = freeMinutes % 60;
-  const availableTimeFormatted = freeMinutes > 0 ? `${hours}h ${mins}m` : 'Full Schedule';
+  const availableTimeFormatted = freeMinutes > 0 ? (hours > 0 ? `${hours}h ${mins}m` : `${mins}m`) : 'Full Schedule';
 
   let dayIndex = 1;
   if (activeTrip.start_date) {
     const start = new Date(activeTrip.start_date);
     const today = new Date(todayStr);
-    const diffTime = Math.abs(today - start);
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+    const diffTime = today - start;
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
     dayIndex = Math.max(1, diffDays);
   }
 
@@ -2738,11 +2899,25 @@ export const copyPublicTrip = async (publicTripId, currentUserId, options = {}) 
 
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
-  const defaultStartDate = tomorrow.toISOString().split('T')[0];
+  const defaultStartDate = getTodayLocalDateString(tomorrow);
   const startDate = options.startDate || defaultStartDate;
 
   const defaultEndDate = new Date(new Date(startDate).getTime() + (daysCount - 1) * 86400000).toISOString().split('T')[0];
   const endDate = options.endDate || defaultEndDate;
+
+  const todayStr = getTodayLocalDateString();
+  if (startDate < todayStr) {
+    throw new Error('Start date cannot be in the past for a new trip.');
+  }
+  if (endDate < startDate) {
+    throw new Error('End date cannot be before start date.');
+  }
+
+  // Prevent overlapping personal trips
+  const { hasOverlap } = await checkTripDateOverlap(currentUserId, startDate, endDate);
+  if (hasOverlap) {
+    throw new Error('You already have a trip scheduled during these dates. Please choose different dates.');
+  }
 
   let newTripId = null;
 
