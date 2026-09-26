@@ -86,33 +86,15 @@ export const apiEnsureUserProfile = async (user) => {
       .eq('id', user.id)
       .maybeSingle();
 
-    if (existingProfile && existingProfile.avatar_url) {
-      return existingProfile;
-    }
-
-    // 2. Resolve image URL from storage bucket if available
-    const { data: publicUrlData } = supabase.storage
-      .from('profile-images')
-      .getPublicUrl(`${user.id}/profile.jpg`);
-
-    const storageAvatarUrl = publicUrlData?.publicUrl ? `${publicUrlData.publicUrl}?v=${Date.now()}` : null;
-    const resolvedAvatar = existingProfile?.avatar_url || user.user_metadata?.avatar_url || storageAvatarUrl;
-
     if (existingProfile) {
-      if (!existingProfile.avatar_url && resolvedAvatar) {
-        await supabase
-          .from('profiles')
-          .update({ avatar_url: resolvedAvatar, updated_at: new Date().toISOString() })
-          .eq('id', user.id);
-        existingProfile.avatar_url = resolvedAvatar;
-      }
       return existingProfile;
     }
 
-    // 3. If no row exists, upsert minimal record into public.profiles
+    // 2. If no row exists, upsert minimal record into public.profiles
+    const initialAvatar = user.user_metadata?.avatar_url || null;
     const newProfile = {
       id: user.id,
-      avatar_url: resolvedAvatar,
+      avatar_url: initialAvatar,
       bio: user.user_metadata?.bio || 'Passionate slow traveler & culture enthusiast.',
       updated_at: new Date().toISOString()
     };
@@ -228,9 +210,53 @@ export const apiSignOut = async () => {
   return await supabase.auth.signOut();
 };
 
+/**
+ * Extract storage object path from a profile avatar URL.
+ * Returns relative path within 'profile-images' bucket or null if external URL.
+ */
+export const getProfileImageStoragePath = (avatarUrl, userId) => {
+  if (!avatarUrl || typeof avatarUrl !== 'string') return null;
+
+  // 1. If the URL contains 'profile-images/' bucket marker
+  const bucketMarker = 'profile-images/';
+  const bucketIndex = avatarUrl.indexOf(bucketMarker);
+  if (bucketIndex !== -1) {
+    let path = avatarUrl.substring(bucketIndex + bucketMarker.length);
+    const queryIndex = path.indexOf('?');
+    if (queryIndex !== -1) {
+      path = path.substring(0, queryIndex);
+    }
+    return decodeURIComponent(path);
+  }
+
+  // 2. If URL contains userId folder prefix
+  if (userId && avatarUrl.includes(`${userId}/`)) {
+    const userIndex = avatarUrl.indexOf(`${userId}/`);
+    let path = avatarUrl.substring(userIndex);
+    const queryIndex = path.indexOf('?');
+    if (queryIndex !== -1) {
+      path = path.substring(0, queryIndex);
+    }
+    return decodeURIComponent(path);
+  }
+
+  return null;
+};
+
 export const uploadProfileAvatar = async (userId, file) => {
   if (!userId || !file || (isSupabaseConfigured() && !isValidUUID(userId))) {
     return { publicUrl: null, error: new Error('Valid user ID and file required') };
+  }
+
+  // Validate allowed image types
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+  if (!allowedTypes.includes(file.type)) {
+    return { publicUrl: null, error: new Error('Supported formats: JPG, PNG, WEBP') };
+  }
+
+  // Validate max file size (5MB)
+  if (file.size > 5 * 1024 * 1024) {
+    return { publicUrl: null, error: new Error('File size exceeds 5MB limit.') };
   }
 
   if (!isSupabaseConfigured()) {
@@ -268,6 +294,66 @@ export const uploadProfileAvatar = async (userId, file) => {
   } catch (err) {
     console.error('uploadProfileAvatar exception:', err);
     return { publicUrl: null, error: err };
+  }
+};
+
+/**
+ * Delete profile avatar from Supabase Storage 'profile-images' and set avatar_url to null.
+ * Safe Deletion Order:
+ *   1. Determine storage object path.
+ *   2. Delete image from Storage.
+ *   3. Update profile record setting avatar_url to null.
+ *   4. Returns success/failure without falsely reporting success.
+ */
+export const deleteProfileAvatar = async (userId, currentAvatarUrl = null) => {
+  if (!userId || (isSupabaseConfigured() && !isValidUUID(userId))) {
+    return { success: false, error: new Error('Valid user ID is required') };
+  }
+
+  if (!isSupabaseConfigured()) {
+    const mockUserStr = localStorage.getItem('locora_mock_user');
+    if (mockUserStr) {
+      try {
+        const mockUser = JSON.parse(mockUserStr);
+        if (mockUser.user_metadata) {
+          mockUser.user_metadata.avatar_url = null;
+        }
+        localStorage.setItem('locora_mock_user', JSON.stringify(mockUser));
+      } catch (_) {}
+    }
+    return { success: true, error: null };
+  }
+
+  try {
+    // 1. Determine Storage path
+    const storagePath = getProfileImageStoragePath(currentAvatarUrl, userId) || `${userId}/profile.jpg`;
+
+    // 2. Delete from Supabase Storage bucket 'profile-images'
+    if (storagePath) {
+      const { error: removeErr } = await supabase.storage
+        .from('profile-images')
+        .remove([storagePath]);
+
+      if (removeErr) {
+        console.error('Supabase Storage deletion error:', removeErr);
+        return { success: false, error: removeErr };
+      }
+    }
+
+    // 3. Update profile record in database to set avatar_url: null
+    const { data: updatedProfile, error: dbErr } = await apiUpdateProfile(userId, {
+      avatar_url: null
+    });
+
+    if (dbErr) {
+      console.error('Database update error after Storage removal:', dbErr);
+      return { success: false, error: dbErr };
+    }
+
+    return { success: true, data: updatedProfile, error: null };
+  } catch (err) {
+    console.error('deleteProfileAvatar exception:', err);
+    return { success: false, error: err };
   }
 };
 

@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 
 const Profile = () => {
-  const { user, logout, updateUserProfile, updateUserPassword, updateUserEmail } = useAuth();
+  const { user, logout, updateUserProfile, updateUserPassword, updateUserEmail, removeProfileAvatar } = useAuth();
   const navigate = useNavigate();
 
   // Profile Edit Modal State
@@ -43,6 +43,11 @@ const Profile = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [statusMsg, setStatusMsg] = useState('');
   const [emailNotice, setEmailNotice] = useState('');
+
+  // Remove Profile Picture Modal State
+  const [showRemoveAvatarConfirm, setShowRemoveAvatarConfirm] = useState(false);
+  const [isRemovingAvatar, setIsRemovingAvatar] = useState(false);
+  const [avatarRemoveError, setAvatarRemoveError] = useState('');
 
   // Achievements State
   const [achievementsData, setAchievementsData] = useState({
@@ -138,8 +143,8 @@ const Profile = () => {
         const { publicUrl, error: uploadErr } = await uploadProfileAvatar(user.id, selectedImageFile);
         if (uploadErr || !publicUrl) {
           console.error('Avatar upload failed:', uploadErr);
-          const detail = uploadErr?.message || 'Failed to upload profile image.';
-          setStatusMsg(`Image upload failed: ${detail}`);
+          const detail = uploadErr?.message || 'Unable to upload your profile picture. Please try again.';
+          setStatusMsg(detail.includes('5MB') || detail.includes('format') ? detail : 'Unable to upload your profile picture. Please try again.');
           setIsSaving(false);
           return;
         }
@@ -215,9 +220,46 @@ const Profile = () => {
       return;
     }
 
+    setStatusMsg('');
     setSelectedImageFile(file);
     const objectUrl = URL.createObjectURL(file);
     setAvatarPreview(objectUrl);
+  };
+
+  // Handle Remove Profile Picture Confirmation & Deletion
+  const handleConfirmRemoveAvatar = async () => {
+    setIsRemovingAvatar(true);
+    setAvatarRemoveError('');
+
+    try {
+      if (avatarUrl && user?.id) {
+        const res = await removeProfileAvatar(avatarUrl);
+        if (!res.success) {
+          console.error('Failed to remove profile avatar:', res.error);
+          const errMsg = res.error?.message || 'Unable to remove your profile picture. Please try again.';
+          setAvatarRemoveError(errMsg);
+          setStatusMsg('Unable to remove your profile picture. Please try again.');
+          setIsRemovingAvatar(false);
+          return;
+        }
+      }
+
+      // Clean up local preview object URL if any
+      if (avatarPreview) {
+        URL.revokeObjectURL(avatarPreview);
+        setAvatarPreview(null);
+      }
+      setSelectedImageFile(null);
+      setAvatarUrl('');
+      setShowRemoveAvatarConfirm(false);
+      setStatusMsg('Profile picture removed successfully.');
+    } catch (err) {
+      console.error('Remove avatar exception:', err);
+      setAvatarRemoveError(err.message || 'Unable to remove your profile picture. Please try again.');
+      setStatusMsg('Unable to remove your profile picture. Please try again.');
+    } finally {
+      setIsRemovingAvatar(false);
+    }
   };
 
   const handleCloseEditModal = () => {
@@ -658,35 +700,48 @@ const Profile = () => {
             </div>
           )}
 
-          {/* Avatar Edit with Upload Trigger */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
-            <div style={{ position: 'relative' }}>
-              <img
-                src={avatarPreview || avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80'}
-                alt="Avatar Preview"
-                style={{ width: '72px', height: '72px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--primary)' }}
-              />
-              <label
-                htmlFor="profile-photo-input"
+          {/* Avatar Edit with Upload / Change / Remove Triggers */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '18px', marginBottom: '22px' }}>
+            <div style={{ position: 'relative', width: '72px', height: '72px', flexShrink: 0 }}>
+              {Boolean(avatarPreview || (avatarUrl && avatarUrl.trim())) ? (
+                <img
+                  src={avatarPreview || avatarUrl}
+                  alt="Avatar Preview"
+                  style={{
+                    width: '72px',
+                    height: '72px',
+                    borderRadius: '50%',
+                    objectFit: 'cover',
+                    border: '2px solid var(--primary)',
+                    boxShadow: 'var(--shadow-sm)'
+                  }}
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                    const fallback = e.target.nextSibling;
+                    if (fallback) fallback.style.display = 'flex';
+                  }}
+                />
+              ) : null}
+              <div
                 style={{
-                  position: 'absolute',
-                  bottom: '-4px',
-                  right: '-4px',
-                  width: '28px',
-                  height: '28px',
+                  width: '72px',
+                  height: '72px',
                   borderRadius: '50%',
-                  backgroundColor: 'var(--primary)',
-                  color: '#ffffff',
-                  display: 'flex',
+                  background: 'linear-gradient(135deg, #2563eb 0%, #7c3aed 100%)',
+                  border: '2px solid var(--primary)',
+                  boxShadow: 'var(--shadow-sm)',
+                  display: Boolean(avatarPreview || (avatarUrl && avatarUrl.trim())) ? 'none' : 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  cursor: 'pointer',
-                  boxShadow: 'var(--shadow-md)'
+                  fontSize: '1.75rem',
+                  fontWeight: 800,
+                  color: '#ffffff',
+                  textTransform: 'uppercase'
                 }}
-                title="Upload Photo"
               >
-                <Camera size={14} />
-              </label>
+                {firstName?.[0] || 'T'}
+              </div>
+
               <input
                 id="profile-photo-input"
                 type="file"
@@ -696,10 +751,84 @@ const Profile = () => {
               />
             </div>
 
-            <div>
-              <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-primary)' }}>Profile Photo</div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-primary)', marginBottom: '4px' }}>
+                Profile Photo
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '10px' }}>
                 Upload JPEG, PNG or WEBP (Max 5MB)
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                {Boolean(avatarPreview || (avatarUrl && avatarUrl.trim())) ? (
+                  <>
+                    <label
+                      htmlFor="profile-photo-input"
+                      className="btn btn-secondary"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '6px 12px',
+                        fontSize: '0.775rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        margin: 0
+                      }}
+                    >
+                      <Camera size={13} />
+                      <span>Change Photo</span>
+                    </label>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (avatarUrl && avatarUrl.trim()) {
+                          setAvatarRemoveError('');
+                          setShowRemoveAvatarConfirm(true);
+                        } else if (avatarPreview) {
+                          URL.revokeObjectURL(avatarPreview);
+                          setAvatarPreview(null);
+                          setSelectedImageFile(null);
+                        }
+                      }}
+                      className="btn"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '6px 12px',
+                        fontSize: '0.775rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        background: 'rgba(239, 68, 68, 0.12)',
+                        color: '#fca5a5',
+                        border: '1px solid rgba(239, 68, 68, 0.25)'
+                      }}
+                    >
+                      <Trash2 size={13} />
+                      <span>Remove Photo</span>
+                    </button>
+                  </>
+                ) : (
+                  <label
+                    htmlFor="profile-photo-input"
+                    className="btn btn-secondary"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '6px 12px',
+                      fontSize: '0.775rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      margin: 0
+                    }}
+                  >
+                    <Camera size={13} />
+                    <span>Upload Photo</span>
+                  </label>
+                )}
               </div>
             </div>
           </div>
@@ -884,6 +1013,53 @@ const Profile = () => {
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
           <button onClick={() => setShowDeleteConfirm(false)} className="btn btn-secondary">Cancel</button>
           <button onClick={handleDeleteAccount} className="btn btn-danger">Delete Account</button>
+        </div>
+      </Modal>
+
+      {/* REMOVE PROFILE PICTURE CONFIRMATION MODAL */}
+      <Modal
+        isOpen={showRemoveAvatarConfirm}
+        onClose={() => {
+          if (!isRemovingAvatar) setShowRemoveAvatarConfirm(false);
+        }}
+        title="Remove profile picture?"
+        maxWidth="450px"
+      >
+        <p style={{ color: 'var(--text-secondary)', marginBottom: '24px', fontSize: '0.925rem', lineHeight: 1.5 }}>
+          Are you sure you want to remove your profile picture?
+        </p>
+
+        {avatarRemoveError && (
+          <div style={{
+            padding: '10px 14px',
+            borderRadius: 'var(--radius-sm)',
+            marginBottom: '16px',
+            fontSize: '0.85rem',
+            backgroundColor: 'rgba(239,68,68,0.15)',
+            color: '#fca5a5',
+            border: '1px solid rgba(239,68,68,0.3)'
+          }}>
+            {avatarRemoveError}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+          <button
+            type="button"
+            onClick={() => setShowRemoveAvatarConfirm(false)}
+            className="btn btn-secondary"
+            disabled={isRemovingAvatar}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirmRemoveAvatar}
+            className="btn btn-danger"
+            disabled={isRemovingAvatar}
+          >
+            {isRemovingAvatar ? 'Removing...' : 'Remove'}
+          </button>
         </div>
       </Modal>
 

@@ -10,6 +10,7 @@ import {
   apiUpdatePassword,
   apiUpdateEmail,
   apiEnsureUserProfile,
+  deleteProfileAvatar,
   formatAuthError
 } from '../services/api';
 
@@ -216,6 +217,25 @@ export const AuthProvider = ({ children }) => {
     return { data: updatedUser, error: null };
   };
 
+  const removeProfileAvatar = async (currentAvatarUrl = null) => {
+    if (!user) return { success: false, error: { message: 'Not authenticated' } };
+    const avatarToClean = currentAvatarUrl || user.user_metadata?.avatar_url || user.profile?.avatar_url || null;
+    const res = await deleteProfileAvatar(user.id, avatarToClean);
+    if (res.success) {
+      const updatedUser = {
+        ...user,
+        user_metadata: {
+          ...user.user_metadata,
+          avatar_url: null
+        },
+        profile: user.profile ? { ...user.profile, avatar_url: null } : null
+      };
+      setUser(updatedUser);
+      localStorage.setItem('locora_mock_user', JSON.stringify(updatedUser));
+    }
+    return res;
+  };
+
   const updateUserPassword = async (newPassword) => {
     return await apiUpdatePassword(newPassword);
   };
@@ -247,6 +267,7 @@ export const AuthProvider = ({ children }) => {
         loginWithGoogle: signInWithGoogle,
         logout: signOut,
         updateUserProfile,
+        removeProfileAvatar,
         updateUserPassword,
         updateUserEmail,
         isSettingsOpen,
@@ -281,6 +302,7 @@ export const useAuth = () => {
       loginAsDemo: () => ({ data: { user: null }, error: null }),
       logout: async () => {},
       updateUserProfile: async () => ({ error: null }),
+      removeProfileAvatar: async () => ({ success: true, error: null }),
       updateUserPassword: async () => ({ error: null }),
       updateUserEmail: async () => ({ error: null }),
       isSettingsOpen: false,
