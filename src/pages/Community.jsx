@@ -12,6 +12,7 @@ import {
 import { getTodayLocalDateString } from '../utils/formatters';
 import TripCard from '../components/TripCard';
 import Modal from '../components/Modal';
+import CustomDropdown from '../components/CustomDropdown';
 import {
   Search,
   Globe,
@@ -27,7 +28,10 @@ import {
   Sparkles,
   Users,
   Compass,
-  AlertCircle
+  AlertCircle,
+  Plus,
+  ArrowRight,
+  X
 } from 'lucide-react';
 
 const DURATION_FILTERS = [
@@ -99,7 +103,7 @@ const Community = () => {
 
   const showToast = (msg) => {
     setToastMsg(msg);
-    setTimeout(() => setToastMsg(''), 3500);
+    setTimeout(() => setToastMsg(''), 3000);
   };
 
   // Fetch Public Trips & Wishlist Data
@@ -220,403 +224,900 @@ const Community = () => {
     }
   };
 
+  const inputStyle = {
+    width: '100%',
+    backgroundColor: 'rgba(20, 28, 48, 0.75)',
+    border: '1px solid rgba(255, 255, 255, 0.12)',
+    borderRadius: '12px',
+    padding: '10px 14px',
+    color: '#ffffff',
+    fontSize: '0.875rem',
+    outline: 'none',
+    boxSizing: 'border-box'
+  };
+
   return (
-    <div style={{ width: '100%', maxWidth: '1240px', margin: '0 auto', paddingBottom: '60px' }}>
+    <div
+      style={{
+        position: 'relative',
+        width: '100%',
+        minHeight: '100vh',
+        backgroundColor: '#070a10',
+        color: '#ffffff',
+        overflowX: 'hidden'
+      }}
+    >
+      {/* 1. CINEMATIC DARK BACKGROUND WITH SUBTLE OVERLAYS */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'fixed',
+          inset: 0,
+          width: '100vw',
+          height: '100vh',
+          overflow: 'hidden',
+          backgroundColor: '#070a10',
+          pointerEvents: 'none',
+          zIndex: 0
+        }}
+      >
+        <img
+          className="page-bg-entrance"
+          src="/community-bg.jpg"
+          alt="Community Travel Background"
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            objectPosition: 'center',
+            filter: 'brightness(0.72) contrast(1.05)'
+          }}
+        />
+
+        {/* Soft Dark Vignette & Gradient Overlay */}
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background:
+              'linear-gradient(to bottom, rgba(7, 10, 16, 0.28) 0%, rgba(7, 10, 16, 0.42) 25%, rgba(7, 10, 16, 0.76) 60%, rgba(7, 10, 16, 0.95) 100%)',
+            pointerEvents: 'none'
+          }}
+        />
+      </div>
 
       {/* Toast Notification */}
       {toastMsg && (
-        <div style={{
-          position: 'fixed', bottom: '24px', right: '24px', zIndex: 1000,
-          backgroundColor: 'rgba(15, 23, 42, 0.95)', border: '1px solid var(--accent-emerald)',
-          borderRadius: 'var(--radius-md)', padding: '14px 20px', color: '#fff',
-          boxShadow: 'var(--shadow-lg)', backdropFilter: 'blur(16px)',
-          display: 'flex', alignItems: 'center', gap: '12px'
-        }}>
-          <CheckCircle2 size={18} style={{ color: 'var(--accent-emerald)' }} />
-          <span style={{ fontSize: '0.9rem' }}>{toastMsg}</span>
+        <div
+          style={{
+            position: 'fixed',
+            bottom: '24px',
+            right: '24px',
+            zIndex: 1000,
+            backgroundColor: 'rgba(12, 16, 26, 0.95)',
+            border: '1px solid #0ea5e9',
+            borderRadius: '12px',
+            padding: '14px 22px',
+            boxShadow: '0 16px 36px rgba(0, 0, 0, 0.65)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            color: '#ffffff',
+            fontSize: '0.9rem',
+            fontWeight: 600,
+            backdropFilter: 'blur(16px)'
+          }}
+        >
+          <CheckCircle2 size={18} style={{ color: '#38bdf8' }} />
+          <span>{toastMsg}</span>
           {copiedTripId && (
             <button
               onClick={() => navigate('/my-trips')}
-              className="btn btn-primary"
-              style={{ padding: '4px 10px', fontSize: '0.75rem', marginLeft: '8px' }}
+              style={{
+                backgroundColor: '#0ea5e9',
+                color: '#ffffff',
+                border: 'none',
+                padding: '4px 12px',
+                borderRadius: '9999px',
+                fontSize: '0.75rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                marginLeft: '6px'
+              }}
             >
-              View My Trip
+              View My Trips
             </button>
           )}
         </div>
       )}
 
-      {/* Page Header */}
-      <div style={{ marginBottom: '24px' }}>
-        <div className="badge badge-emerald" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', marginBottom: '8px', fontSize: '0.725rem' }}>
-          <Globe size={12} /> Public Travel Inspiration
-        </div>
-        <h1 style={{ fontSize: '2.1rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)', letterSpacing: '-0.03em' }}>
-          Community
-        </h1>
-        <p style={{ fontSize: '0.925rem', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
-          Get inspired by journeys from fellow travelers. View, copy, and save public itineraries.
-        </p>
-      </div>
-
-      {/* SEARCH BAR & FILTERS ROW */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '12px',
-        marginBottom: '24px',
-        flexWrap: 'wrap'
-      }}>
-        {/* Search Input */}
-        <div style={{ flex: 1, minWidth: '260px', position: 'relative' }}>
-          <input
-            type="text"
-            className="form-input"
-            placeholder="Search public trips by destination, creator, or title..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{ paddingLeft: '44px', height: '44px', fontSize: '0.9rem', background: 'var(--bg-card)' }}
-          />
-          <Search size={16} style={{ position: 'absolute', left: '15px', top: '14px', color: 'var(--text-muted)' }} />
-        </div>
-
-        {/* Duration Filter Dropdown */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <Filter size={15} style={{ color: 'var(--primary)' }} />
-          <select
-            className="form-select"
-            value={durationFilter}
-            onChange={(e) => setDurationFilter(e.target.value)}
-            style={{ height: '44px', minWidth: '150px', background: 'var(--bg-card)', fontSize: '0.85rem' }}
-          >
-            {DURATION_FILTERS.map(df => (
-              <option key={df.id} value={df.id}>{df.label}</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Sort By Dropdown */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <ArrowUpDown size={15} style={{ color: 'var(--accent-cyan)' }} />
-          <select
-            className="form-select"
-            value={sortOption}
-            onChange={(e) => setSortOption(e.target.value)}
-            style={{ height: '44px', minWidth: '150px', background: 'var(--bg-card)', fontSize: '0.85rem' }}
-          >
-            {SORT_OPTIONS.map(opt => (
-              <option key={opt} value={opt}>{opt}</option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      {/* PUBLIC TRIPS GRID */}
-      {loading ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '24px' }}>
-          {[1, 2, 3].map(i => (
-            <div key={i} className="glass-panel" style={{ height: '360px', opacity: 0.5, animation: 'pulse 1.5s infinite' }} />
-          ))}
-        </div>
-      ) : filteredTrips.length > 0 ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '24px' }}>
-          {filteredTrips.map(trip => (
-            <TripCard
-              key={trip.id}
-              trip={trip}
-              isCommunityCard={true}
-              isSaved={savedIds.includes(trip.id)}
-              onViewTrip={handleViewTrip}
-              onCopyTrip={handleOpenCopyModal}
-              onSaveTrip={handleSaveToggle}
-            />
-          ))}
-        </div>
-      ) : (
-        /* POLISHED EMPTY STATE */
-        <div className="glass-panel" style={{ padding: '48px 24px', textAlign: 'center', maxWidth: '500px', margin: '40px auto' }}>
-          <Users size={40} style={{ color: 'var(--text-muted)', marginBottom: '14px' }} />
-          <h3 style={{ fontSize: '1.2rem', margin: '0 0 8px 0', color: 'var(--text-primary)' }}>No public trips found.</h3>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '24px' }}>
-            Be the first to share your journey with the Locora community!
-          </p>
-          <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
-            {searchQuery && (
-              <button onClick={() => setSearchQuery('')} className="btn btn-secondary">
-                Clear Search
-              </button>
-            )}
-            <button onClick={() => navigate('/my-trips')} className="btn btn-primary">
-              Share a Trip from My Trips
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: READ-ONLY PUBLIC ITINERARY VIEW */}
-      {selectedTrip && (
-        <Modal
-          isOpen={Boolean(selectedTrip)}
-          onClose={() => setSelectedTrip(null)}
-          title={selectedTrip.title || selectedTrip.name}
+      {/* 2. MAIN CONTENT WRAPPER */}
+      <main
+        className="page-entrance"
+        style={{
+          position: 'relative',
+          zIndex: 10,
+          width: '100%',
+          maxWidth: '1280px',
+          margin: '0 auto',
+          padding: '100px 32px 80px 32px'
+        }}
+      >
+        {/* ================= 1. PAGE HEADER ================= */}
+        <div
+          className="page-stagger-header"
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'space-between',
+            marginBottom: '32px',
+            flexWrap: 'wrap',
+            gap: '20px'
+          }}
         >
           <div>
-            {/* Cover Banner */}
-            <div style={{ height: '200px', borderRadius: 'var(--radius-md)', overflow: 'hidden', position: 'relative', marginBottom: '20px', backgroundColor: 'var(--bg-surface)' }}>
-              {(selectedTrip.cover_image_url || selectedTrip.cover_image || selectedTrip.coverPhoto) ? (
-                <img
-                  src={selectedTrip.cover_image_url || selectedTrip.cover_image || selectedTrip.coverPhoto}
-                  alt={selectedTrip.title || selectedTrip.name}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                  onError={(e) => { e.target.style.display = 'none'; }}
-                />
-              ) : (
-                <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, rgba(37, 99, 235, 0.2) 0%, rgba(15, 23, 42, 0.8) 100%)' }} />
-              )}
-              <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(15,23,42,0.9) 0%, transparent 60%)' }} />
+            <h1
+              style={{
+                fontFamily: 'var(--font-heading)',
+                fontSize: 'clamp(2.4rem, 3.8vw, 3.2rem)',
+                fontWeight: 900,
+                lineHeight: 1.05,
+                letterSpacing: '-0.03em',
+                color: '#ffffff',
+                margin: '0 0 8px 0',
+                textShadow: '0 2px 14px rgba(0, 0, 0, 0.7)'
+              }}
+            >
+              Community
+            </h1>
+            <p
+              style={{
+                fontSize: 'clamp(0.9rem, 1.1vw, 1rem)',
+                color: 'rgba(226, 232, 240, 0.82)',
+                margin: 0,
+                fontWeight: 400,
+                lineHeight: 1.5,
+                textShadow: '0 1px 8px rgba(0, 0, 0, 0.6)'
+              }}
+            >
+              Get inspired by journeys from fellow travelers across the world. View, save, and adapt real travel stories.
+            </p>
+          </div>
+        </div>
 
-              <div style={{ position: 'absolute', bottom: '16px', left: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                {selectedTrip.author_avatar ? (
+        {/* ================= 2. SEARCH & FILTER CONTROLS ================= */}
+        <div
+          className="page-stagger-hero"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '14px',
+            marginBottom: '24px',
+            flexWrap: 'wrap',
+            position: 'relative',
+            zIndex: 50
+          }}
+        >
+          {/* Search Input Bar */}
+          <div
+            style={{
+              flex: 1,
+              minWidth: '280px',
+              position: 'relative',
+              display: 'flex',
+              alignItems: 'center'
+            }}
+          >
+            <input
+              type="text"
+              placeholder="Search community journeys by destination, creator, or title..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                width: '100%',
+                height: '46px',
+                backgroundColor: 'rgba(20, 26, 38, 0.72)',
+                backdropFilter: 'blur(16px)',
+                WebkitBackdropFilter: 'blur(16px)',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
+                borderRadius: '9999px',
+                padding: '0 44px 0 46px',
+                color: '#ffffff',
+                fontSize: '0.9rem',
+                outline: 'none',
+                boxShadow: '0 8px 24px rgba(0, 0, 0, 0.25)',
+                transition: 'border-color 0.2s ease, box-shadow 0.2s ease'
+              }}
+              onFocus={(e) => {
+                e.currentTarget.style.borderColor = '#0ea5e9';
+                e.currentTarget.style.boxShadow = '0 0 0 3px rgba(14, 165, 233, 0.2)';
+              }}
+              onBlur={(e) => {
+                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)';
+                e.currentTarget.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.25)';
+              }}
+            />
+            <Search
+              size={16}
+              style={{
+                position: 'absolute',
+                left: '18px',
+                color: '#38bdf8',
+                pointerEvents: 'none'
+              }}
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                style={{
+                  position: 'absolute',
+                  right: '16px',
+                  background: 'none',
+                  border: 'none',
+                  color: 'rgba(226, 232, 240, 0.6)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <X size={15} />
+              </button>
+            )}
+          </div>
+
+          {/* Sort By Custom Glassmorphic Dropdown */}
+          <CustomDropdown
+            value={sortOption}
+            onChange={setSortOption}
+            options={SORT_OPTIONS}
+            icon={<ArrowUpDown size={14} style={{ color: '#38bdf8' }} />}
+            pill={true}
+            minWidth="180px"
+            ariaLabel="Sort community trips"
+          />
+        </div>
+
+        {/* ================= 3. DURATION FILTER PILLS ================= */}
+        <div
+          className="page-stagger-section-1"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            marginBottom: '32px',
+            overflowX: 'auto',
+            paddingBottom: '8px'
+          }}
+        >
+          {DURATION_FILTERS.map((df) => {
+            const isActive = durationFilter === df.id;
+            return (
+              <button
+                key={df.id}
+                onClick={() => setDurationFilter(df.id)}
+                style={{
+                  backgroundColor: isActive ? '#0ea5e9' : 'rgba(14, 20, 34, 0.75)',
+                  color: isActive ? '#ffffff' : 'rgba(226, 232, 240, 0.85)',
+                  border: isActive ? '1px solid #0ea5e9' : '1px solid rgba(255, 255, 255, 0.1)',
+                  backdropFilter: 'blur(16px)',
+                  padding: '8px 18px',
+                  borderRadius: '9999px',
+                  fontSize: '0.825rem',
+                  fontWeight: isActive ? 800 : 600,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  boxShadow: isActive ? '0 4px 14px rgba(14, 165, 233, 0.35)' : 'none',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseEnter={(e) => {
+                  if (!isActive) {
+                    e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.12)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isActive) {
+                    e.currentTarget.style.backgroundColor = 'rgba(14, 20, 34, 0.75)';
+                  }
+                }}
+              >
+                {df.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* ================= 4. PUBLIC TRIPS GRID ================= */}
+        {loading ? (
+          /* Loading Skeletons */
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
+              gap: '28px'
+            }}
+          >
+            {[1, 2, 3, 4, 5, 6].map((n) => (
+              <div
+                key={n}
+                style={{
+                  height: '380px',
+                  borderRadius: '20px',
+                  background: 'rgba(255, 255, 255, 0.04)',
+                  border: '1px solid rgba(255, 255, 255, 0.08)'
+                }}
+              />
+            ))}
+          </div>
+        ) : filteredTrips.length > 0 ? (
+          <div
+            className="page-stagger-section-2"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
+              gap: '28px'
+            }}
+          >
+            {filteredTrips.map((trip, idx) => (
+              <div
+                key={trip.id}
+                className="page-card-entrance"
+                style={{ animationDelay: `${idx * 0.05}s` }}
+              >
+                <TripCard
+                  trip={trip}
+                  isCommunityCard={true}
+                  isSaved={savedIds.includes(trip.id)}
+                  onViewTrip={handleViewTrip}
+                  onCopyTrip={handleOpenCopyModal}
+                  onSaveTrip={handleSaveToggle}
+                />
+              </div>
+            ))}
+          </div>
+        ) : (
+          /* Empty State */
+          <div
+            style={{
+              backgroundColor: 'rgba(14, 20, 34, 0.85)',
+              backdropFilter: 'blur(20px)',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              borderRadius: '24px',
+              padding: '56px 32px',
+              textAlign: 'center',
+              maxWidth: '520px',
+              margin: '40px auto',
+              boxShadow: '0 24px 60px rgba(0, 0, 0, 0.7)'
+            }}
+          >
+            <Compass size={44} style={{ color: '#0ea5e9', margin: '0 auto 16px auto', opacity: 0.85 }} />
+            <h3
+              style={{
+                fontFamily: 'var(--font-heading)',
+                fontSize: '1.35rem',
+                fontWeight: 800,
+                color: '#ffffff',
+                marginBottom: '8px'
+              }}
+            >
+              No public journeys found
+            </h3>
+            <p
+              style={{
+                color: 'rgba(226, 232, 240, 0.75)',
+                fontSize: '0.9rem',
+                lineHeight: 1.5,
+                marginBottom: '28px'
+              }}
+            >
+              Be the first to share your journey with the Locora global community!
+            </p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.1)',
+                    border: '1px solid rgba(255, 255, 255, 0.16)',
+                    color: '#ffffff',
+                    padding: '10px 20px',
+                    borderRadius: '9999px',
+                    fontWeight: 600,
+                    fontSize: '0.85rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Clear Search
+                </button>
+              )}
+              <button
+                onClick={() => navigate('/my-trips')}
+                style={{
+                  backgroundColor: '#0ea5e9',
+                  color: '#ffffff',
+                  border: 'none',
+                  padding: '10px 24px',
+                  borderRadius: '9999px',
+                  fontWeight: 800,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 14px rgba(14, 165, 233, 0.35)'
+                }}
+              >
+                Share a Trip from My Trips
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ================= 5. MODAL: READ-ONLY PUBLIC ITINERARY VIEW ================= */}
+        {selectedTrip && (
+          <Modal
+            isOpen={Boolean(selectedTrip)}
+            onClose={() => setSelectedTrip(null)}
+            title={selectedTrip.title || selectedTrip.name}
+            maxWidth="640px"
+          >
+            <div>
+              {/* Cover Banner */}
+              <div
+                style={{
+                  height: '220px',
+                  borderRadius: '16px',
+                  overflow: 'hidden',
+                  position: 'relative',
+                  marginBottom: '20px',
+                  backgroundColor: '#0d121f'
+                }}
+              >
+                {(selectedTrip.cover_image_url || selectedTrip.cover_image || selectedTrip.coverPhoto) ? (
                   <img
-                    src={selectedTrip.author_avatar}
-                    alt={selectedTrip.author_name || 'Creator'}
-                    style={{ width: '36px', height: '36px', borderRadius: '50%', border: '2px solid var(--primary)', objectFit: 'cover' }}
-                    onError={(e) => { e.target.style.display = 'none'; }}
+                    src={selectedTrip.cover_image_url || selectedTrip.cover_image || selectedTrip.coverPhoto}
+                    alt={selectedTrip.title || selectedTrip.name}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                    }}
                   />
                 ) : (
                   <div
                     style={{
-                      width: '36px',
-                      height: '36px',
-                      borderRadius: '50%',
-                      background: 'linear-gradient(135deg, #2563eb 0%, #7c3aed 100%)',
-                      border: '2px solid var(--primary)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '0.9rem',
-                      fontWeight: 700,
-                      color: '#fff'
+                      width: '100%',
+                      height: '100%',
+                      background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.25) 0%, rgba(13, 18, 31, 0.95) 100%)'
                     }}
-                  >
-                    {(selectedTrip.author_name || selectedTrip.title || 'C')[0]?.toUpperCase()}
-                  </div>
+                  />
                 )}
-                <div>
-                  <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.7)' }}>Created by</div>
-                  <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#fff' }}>{selectedTrip.author_name || 'Community Traveler'}</div>
+
+                <div
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    background: 'linear-gradient(to top, rgba(10, 14, 24, 0.95) 0%, transparent 60%)'
+                  }}
+                />
+
+                <div
+                  style={{
+                    position: 'absolute',
+                    bottom: '16px',
+                    left: '16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px'
+                  }}
+                >
+                  {selectedTrip.author_avatar ? (
+                    <img
+                      src={selectedTrip.author_avatar}
+                      alt={selectedTrip.author_name || 'Creator'}
+                      style={{
+                        width: '38px',
+                        height: '38px',
+                        borderRadius: '50%',
+                        border: '2px solid #0ea5e9',
+                        objectFit: 'cover'
+                      }}
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                      }}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        width: '38px',
+                        height: '38px',
+                        borderRadius: '50%',
+                        background: 'linear-gradient(135deg, #0ea5e9 0%, #7c3aed 100%)',
+                        border: '2px solid #0ea5e9',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '0.9rem',
+                        fontWeight: 800,
+                        color: '#fff'
+                      }}
+                    >
+                      {(selectedTrip.author_name || selectedTrip.title || 'C')[0]?.toUpperCase()}
+                    </div>
+                  )}
+                  <div>
+                    <div style={{ fontSize: '0.75rem', color: 'rgba(226, 232, 240, 0.7)' }}>Created by</div>
+                    <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#ffffff' }}>
+                      {selectedTrip.author_name || 'Community Traveler'}
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Metadata Summary */}
-            <div style={{ display: 'flex', gap: '20px', fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '16px', flexWrap: 'wrap' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <MapPin size={15} style={{ color: 'var(--accent-cyan)' }} />
-                <span>{selectedTrip.destination || selectedTrip.stops?.join(' · ') || selectedTrip.country || 'Destination'}</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Calendar size={15} style={{ color: 'var(--primary)' }} />
-                <span>{getTripDaysCount(selectedTrip)} Days Itinerary</span>
-              </div>
-              {selectedTrip.budget ? (
+              {/* Metadata Summary */}
+              <div
+                style={{
+                  display: 'flex',
+                  gap: '18px',
+                  fontSize: '0.875rem',
+                  color: 'rgba(226, 232, 240, 0.8)',
+                  marginBottom: '18px',
+                  flexWrap: 'wrap'
+                }}
+              >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ color: 'var(--accent-emerald)', fontWeight: 600 }}>₹{Number(selectedTrip.budget).toLocaleString()}</span>
-                  <span>Est. Budget</span>
+                  <MapPin size={15} style={{ color: '#34d399' }} />
+                  <span>{selectedTrip.destination || selectedTrip.stops?.join(' · ') || selectedTrip.country || 'Destination'}</span>
                 </div>
-              ) : null}
-            </div>
-
-            {selectedTrip.description && (
-              <p style={{ fontSize: '0.925rem', lineHeight: 1.6, color: 'var(--text-primary)', marginBottom: '24px' }}>
-                "{selectedTrip.description}"
-              </p>
-            )}
-
-            {/* Day-by-Day Activities */}
-            <h4 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '12px', color: 'var(--text-primary)' }}>
-              Day-by-Day Activities
-            </h4>
-
-            {loadingItems ? (
-              <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                Loading itinerary details...
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Calendar size={15} style={{ color: '#38bdf8' }} />
+                  <span>{getTripDaysCount(selectedTrip)} Days Itinerary</span>
+                </div>
+                {selectedTrip.budget ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ color: '#34d399', fontWeight: 700 }}>₹{Number(selectedTrip.budget).toLocaleString()}</span>
+                    <span>Est. Budget</span>
+                  </div>
+                ) : null}
               </div>
-            ) : selectedTripDays.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '24px', maxHeight: '320px', overflowY: 'auto', paddingRight: '4px' }}>
-                {selectedTripDays.map((day) => (
-                  <div key={day.id || day.day_number} style={{ marginBottom: '6px' }}>
-                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <Calendar size={14} /> Day {day.day_number} {day.date ? `· ${day.date}` : ''} {day.notes ? `(${day.notes})` : ''}
-                    </div>
-                    {day.activities && day.activities.length > 0 ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {day.activities.map((act, idx) => (
-                          <div key={act.id || idx} className="glass-panel" style={{ padding: '12px 16px', background: 'rgba(255,255,255,0.03)' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                              <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
-                                {act.startTime || act.start_time || '10:00 AM'} — {act.title}
-                              </span>
-                              <span className="badge badge-purple" style={{ fontSize: '0.7rem' }}>{act.category || 'Activity'}</span>
+
+              {selectedTrip.description && (
+                <p
+                  style={{
+                    fontSize: '0.925rem',
+                    lineHeight: 1.6,
+                    color: '#ffffff',
+                    marginBottom: '24px',
+                    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                    padding: '14px 18px',
+                    borderRadius: '12px',
+                    border: '1px solid rgba(255, 255, 255, 0.08)'
+                  }}
+                >
+                  "{selectedTrip.description}"
+                </p>
+              )}
+
+              {/* Day-by-Day Activities */}
+              <h4
+                style={{
+                  fontFamily: 'var(--font-heading)',
+                  fontSize: '1.05rem',
+                  fontWeight: 800,
+                  marginBottom: '14px',
+                  color: '#ffffff'
+                }}
+              >
+                Day-by-Day Schedule
+              </h4>
+
+              {loadingItems ? (
+                <div style={{ padding: '24px', textAlign: 'center', color: 'rgba(226, 232, 240, 0.6)' }}>
+                  Loading itinerary details...
+                </div>
+              ) : selectedTripDays.length > 0 ? (
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '14px',
+                    marginBottom: '24px',
+                    maxHeight: '320px',
+                    overflowY: 'auto',
+                    paddingRight: '6px'
+                  }}
+                >
+                  {selectedTripDays.map((day) => (
+                    <div key={day.id || day.day_number}>
+                      <div
+                        style={{
+                          fontSize: '0.85rem',
+                          fontWeight: 800,
+                          color: '#38bdf8',
+                          marginBottom: '8px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px'
+                        }}
+                      >
+                        <Calendar size={13} /> Day {day.day_number} {day.date ? `· ${day.date}` : ''} {day.notes ? `(${day.notes})` : ''}
+                      </div>
+                      {day.activities && day.activities.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {day.activities.map((act, idx) => (
+                            <div
+                              key={act.id || idx}
+                              style={{
+                                padding: '12px 16px',
+                                background: 'rgba(20, 28, 48, 0.65)',
+                                borderRadius: '12px',
+                                border: '1px solid rgba(255, 255, 255, 0.08)',
+                                borderLeft: '3px solid #0ea5e9'
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#ffffff' }}>
+                                  {act.startTime || act.start_time || '10:00 AM'} — {act.title}
+                                </span>
+                                <span
+                                  style={{
+                                    fontSize: '0.7rem',
+                                    fontWeight: 700,
+                                    backgroundColor: 'rgba(168, 85, 247, 0.15)',
+                                    color: '#c084fc',
+                                    border: '1px solid rgba(168, 85, 247, 0.3)',
+                                    padding: '2px 8px',
+                                    borderRadius: '6px'
+                                  }}
+                                >
+                                  {act.category || 'Activity'}
+                                </span>
+                              </div>
+                              <p style={{ fontSize: '0.8rem', color: 'rgba(226, 232, 240, 0.7)', margin: 0 }}>
+                                {act.description || act.location || 'Local experience spot'}
+                              </p>
                             </div>
-                            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0 }}>
-                              {act.description || act.location || 'Local experience spot'}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', paddingLeft: '8px' }}>
-                        No activities scheduled for this day.
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : selectedTripItems.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px', maxHeight: '280px', overflowY: 'auto' }}>
-                {selectedTripItems.map((act, idx) => (
-                  <div key={act.id || idx} className="glass-panel" style={{ padding: '12px 16px', background: 'rgba(255,255,255,0.03)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                      <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
-                        {act.startTime || act.start_time || '10:00 AM'} — {act.title}
-                      </span>
-                      <span className="badge badge-purple" style={{ fontSize: '0.7rem' }}>{act.category || 'Activity'}</span>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: '0.8rem', color: 'rgba(226, 232, 240, 0.5)', paddingLeft: '8px' }}>
+                          No activities scheduled for this day.
+                        </div>
+                      )}
                     </div>
-                    <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0 }}>
-                      {act.description || act.location || 'Local experience spot'}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '20px' }}>
-                No activities found for this trip.
-              </div>
-            )}
-
-            {/* Action Bar */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '16px', borderTop: '1px solid var(--border-subtle)' }}>
-              <button
-                onClick={() => handleSaveToggle(selectedTrip)}
-                className="btn btn-secondary"
-              >
-                <Heart size={16} style={{ fill: savedIds.includes(selectedTrip.id) ? '#ef4444' : 'none', color: savedIds.includes(selectedTrip.id) ? '#ef4444' : 'inherit' }} />
-                <span>{savedIds.includes(selectedTrip.id) ? 'Saved to Wishlist' : 'Save Trip'}</span>
-              </button>
-
-              <button
-                onClick={() => handleOpenCopyModal(selectedTrip)}
-                className="btn btn-primary"
-              >
-                <Copy size={16} />
-                <span>Copy Trip to My Trips</span>
-              </button>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {/* MODAL: CHOOSE TRAVEL DATES FOR COPY TRIP */}
-      {copyModalTrip && (
-        <Modal
-          isOpen={Boolean(copyModalTrip)}
-          onClose={() => !copying && setCopyModalTrip(null)}
-          title="Choose Travel Dates"
-        >
-          <form onSubmit={handleConfirmCopy} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <div>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: '0 0 6px 0', color: 'var(--text-primary)' }}>
-                {copyModalTrip.title || copyModalTrip.name}
-              </h3>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: 0 }}>
-                Set your travel dates. The {getTripDaysCount(copyModalTrip)}-day itinerary will be copied and customized to your timeline.
-              </p>
-            </div>
-
-            {copyError && (
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '10px 14px',
-                backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                border: '1px solid rgba(239, 68, 68, 0.3)',
-                borderRadius: 'var(--radius-sm)',
-                color: '#fca5a5',
-                fontSize: '0.85rem'
-              }}>
-                <AlertCircle size={16} />
-                <span>{copyError}</span>
-              </div>
-            )}
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-              <div>
-                <label className="form-label" style={{ display: 'block', marginBottom: '6px', fontSize: '0.85rem', fontWeight: 600 }}>
-                  Start Date
-                </label>
-                <input
-                  type="date"
-                  className="form-input"
-                  value={copyStartDate}
-                  min={getTodayLocalDateString()}
-                  onChange={(e) => {
-                    const newStart = e.target.value;
-                    setCopyStartDate(newStart);
-                    setCopyError('');
-                    if (newStart) {
-                      setCopyEndDate(calculateEndDate(newStart, getTripDaysCount(copyModalTrip)));
-                    }
+                  ))}
+                </div>
+              ) : selectedTripItems.length > 0 ? (
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '10px',
+                    marginBottom: '24px',
+                    maxHeight: '280px',
+                    overflowY: 'auto'
                   }}
-                  required
-                  style={{ width: '100%', height: '42px', background: 'var(--bg-card)' }}
-                />
-              </div>
+                >
+                  {selectedTripItems.map((act, idx) => (
+                    <div
+                      key={act.id || idx}
+                      style={{
+                        padding: '12px 16px',
+                        background: 'rgba(20, 28, 48, 0.65)',
+                        borderRadius: '12px',
+                        border: '1px solid rgba(255, 255, 255, 0.08)',
+                        borderLeft: '3px solid #0ea5e9'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                        <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#ffffff' }}>
+                          {act.startTime || act.start_time || '10:00 AM'} — {act.title}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: '0.7rem',
+                            fontWeight: 700,
+                            backgroundColor: 'rgba(168, 85, 247, 0.15)',
+                            color: '#c084fc',
+                            border: '1px solid rgba(168, 85, 247, 0.3)',
+                            padding: '2px 8px',
+                            borderRadius: '6px'
+                          }}
+                        >
+                          {act.category || 'Activity'}
+                        </span>
+                      </div>
+                      <p style={{ fontSize: '0.8rem', color: 'rgba(226, 232, 240, 0.7)', margin: 0 }}>
+                        {act.description || act.location || 'Local experience spot'}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ padding: '20px', textAlign: 'center', color: 'rgba(226, 232, 240, 0.5)', fontSize: '0.85rem', marginBottom: '20px' }}>
+                  No activities found for this trip.
+                </div>
+              )}
 
-              <div>
-                <label className="form-label" style={{ display: 'block', marginBottom: '6px', fontSize: '0.85rem', fontWeight: 600 }}>
-                  End Date
-                </label>
-                <input
-                  type="date"
-                  className="form-input"
-                  value={copyEndDate}
-                  min={copyStartDate || getTodayLocalDateString()}
-                  onChange={(e) => {
-                    setCopyEndDate(e.target.value);
-                    setCopyError('');
+              {/* Action Bar */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  paddingTop: '18px',
+                  borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+                  gap: '12px'
+                }}
+              >
+                <button
+                  onClick={() => handleSaveToggle(selectedTrip)}
+                  style={{
+                    background: savedIds.includes(selectedTrip.id) ? 'rgba(239, 68, 68, 0.15)' : 'rgba(255, 255, 255, 0.08)',
+                    border: savedIds.includes(selectedTrip.id) ? '1px solid rgba(239, 68, 68, 0.35)' : '1px solid rgba(255, 255, 255, 0.14)',
+                    color: savedIds.includes(selectedTrip.id) ? '#f87171' : '#ffffff',
+                    padding: '9px 18px',
+                    borderRadius: '9999px',
+                    fontSize: '0.85rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px'
                   }}
-                  required
-                  style={{ width: '100%', height: '42px', background: 'var(--bg-card)' }}
-                />
+                >
+                  <Heart size={15} style={{ fill: savedIds.includes(selectedTrip.id) ? '#ef4444' : 'none' }} />
+                  <span>{savedIds.includes(selectedTrip.id) ? 'Saved to Wishlist' : 'Save Trip'}</span>
+                </button>
+
+                <button
+                  onClick={() => handleOpenCopyModal(selectedTrip)}
+                  style={{
+                    backgroundColor: '#0ea5e9',
+                    color: '#ffffff',
+                    border: 'none',
+                    padding: '9px 22px',
+                    borderRadius: '9999px',
+                    fontSize: '0.85rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    boxShadow: '0 4px 14px rgba(14, 165, 233, 0.35)'
+                  }}
+                >
+                  <Copy size={15} />
+                  <span>Copy Trip to My Trips</span>
+                </button>
               </div>
             </div>
+          </Modal>
+        )}
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '10px' }}>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                disabled={copying}
-                onClick={() => setCopyModalTrip(null)}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="btn btn-primary"
-                disabled={copying}
-              >
-                {copying ? 'Copying Itinerary...' : 'Confirm & Copy Trip'}
-              </button>
-            </div>
-          </form>
-        </Modal>
-      )}
+        {/* ================= 6. MODAL: CHOOSE TRAVEL DATES FOR COPY TRIP ================= */}
+        {copyModalTrip && (
+          <Modal
+            isOpen={Boolean(copyModalTrip)}
+            onClose={() => !copying && setCopyModalTrip(null)}
+            title="Choose Travel Dates"
+            maxWidth="480px"
+          >
+            <form onSubmit={handleConfirmCopy} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <div>
+                <h3
+                  style={{
+                    fontFamily: 'var(--font-heading)',
+                    fontSize: '1.15rem',
+                    fontWeight: 800,
+                    margin: '0 0 6px 0',
+                    color: '#ffffff'
+                  }}
+                >
+                  {copyModalTrip.title || copyModalTrip.name}
+                </h3>
+                <p style={{ fontSize: '0.85rem', color: 'rgba(226, 232, 240, 0.75)', margin: 0 }}>
+                  Set your travel dates. The {getTripDaysCount(copyModalTrip)}-day itinerary will be copied and customized to your timeline.
+                </p>
+              </div>
 
+              {copyError && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '10px 14px',
+                    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    borderRadius: '10px',
+                    color: '#fca5a5',
+                    fontSize: '0.85rem'
+                  }}
+                >
+                  <AlertCircle size={16} />
+                  <span>{copyError}</span>
+                </div>
+              )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.825rem', fontWeight: 600, color: 'rgba(226, 232, 240, 0.85)' }}>
+                    Start Date
+                  </label>
+                  <input
+                    type="date"
+                    value={copyStartDate}
+                    min={new Date().toISOString().split('T')[0]}
+                    onChange={(e) => {
+                      const newStart = e.target.value;
+                      setCopyStartDate(newStart);
+                      setCopyError('');
+                      if (newStart) {
+                        setCopyEndDate(calculateEndDate(newStart, getTripDaysCount(copyModalTrip)));
+                      }
+                    }}
+                    required
+                    style={inputStyle}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.825rem', fontWeight: 600, color: 'rgba(226, 232, 240, 0.85)' }}>
+                    End Date
+                  </label>
+                  <input
+                    type="date"
+                    value={copyEndDate}
+                    min={copyStartDate || new Date().toISOString().split('T')[0]}
+                    onChange={(e) => {
+                      setCopyEndDate(e.target.value);
+                      setCopyError('');
+                    }}
+                    required
+                    style={inputStyle}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '10px' }}>
+                <button
+                  type="button"
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.08)',
+                    border: '1px solid rgba(255, 255, 255, 0.14)',
+                    color: '#ffffff',
+                    padding: '9px 18px',
+                    borderRadius: '9999px',
+                    fontSize: '0.85rem',
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
+                  disabled={copying}
+                  onClick={() => setCopyModalTrip(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  style={{
+                    backgroundColor: '#0ea5e9',
+                    color: '#ffffff',
+                    border: 'none',
+                    padding: '9px 22px',
+                    borderRadius: '9999px',
+                    fontSize: '0.85rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 14px rgba(14, 165, 233, 0.35)'
+                  }}
+                  disabled={copying}
+                >
+                  {copying ? 'Copying Itinerary...' : 'Confirm & Copy Trip'}
+                </button>
+              </div>
+            </form>
+          </Modal>
+        )}
+      </main>
     </div>
   );
 };
 
 export default Community;
-

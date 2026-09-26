@@ -539,18 +539,67 @@ const Discover = () => {
   };
 
   return (
-    <div style={{ width: '100%', maxWidth: '1240px', margin: '0 auto', paddingBottom: '60px' }}>
+    <div
+      style={{
+        position: 'relative',
+        width: '100%',
+        minHeight: '100vh',
+        backgroundColor: '#070a10',
+        color: '#ffffff',
+        overflowX: 'hidden'
+      }}
+    >
+      {/* 1. CINEMATIC DARK BACKGROUND WITH SUBTLE OVERLAYS */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'fixed',
+          inset: 0,
+          width: '100vw',
+          height: '100vh',
+          overflow: 'hidden',
+          backgroundColor: '#070a10',
+          pointerEvents: 'none',
+          zIndex: 0
+        }}
+      >
+        <img
+          className="page-bg-entrance"
+          src="/discover-fuji.jpg"
+          alt="Discover Landscape Background"
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            objectPosition: 'center 40%',
+            filter: 'brightness(0.75) contrast(1.05)'
+          }}
+        />
+
+        {/* Soft Dark Vignette & Gradient Overlay */}
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background:
+              'linear-gradient(to bottom, rgba(7, 10, 16, 0.35) 0%, rgba(7, 10, 16, 0.5) 25%, rgba(7, 10, 16, 0.8) 60%, rgba(7, 10, 16, 0.98) 100%)',
+            pointerEvents: 'none'
+          }}
+        />
+      </div>
+
+      <div style={{ position: 'relative', zIndex: 1, width: '100%', maxWidth: '1280px', margin: '0 auto', padding: '96px 32px 60px 32px' }}>
 
       {/* Toast Notification */}
       {toastMsg && (
         <div style={{
           position: 'fixed', bottom: '24px', right: '24px', zIndex: 1000,
-          backgroundColor: 'rgba(15, 23, 42, 0.95)', border: '1px solid var(--accent-emerald)',
-          borderRadius: 'var(--radius-md)', padding: '14px 20px', color: '#fff',
-          boxShadow: 'var(--shadow-lg)', backdropFilter: 'blur(16px)',
+          backgroundColor: 'rgba(12, 16, 26, 0.95)', border: '1px solid #0ea5e9',
+          borderRadius: '12px', padding: '14px 20px', color: '#fff',
+          boxShadow: '0 16px 36px rgba(0, 0, 0, 0.65)', backdropFilter: 'blur(16px)',
           display: 'flex', alignItems: 'center', gap: '10px'
         }}>
-          <CheckCircle2 size={18} style={{ color: 'var(--accent-emerald)' }} />
+          <CheckCircle2 size={18} style={{ color: '#38bdf8' }} />
           <span>{toastMsg}</span>
         </div>
       )}
@@ -560,8 +609,8 @@ const Discover = () => {
         <div style={{
           position: 'fixed', bottom: '24px', right: '24px', zIndex: 1000,
           backgroundColor: 'rgba(239, 68, 68, 0.95)', border: '1px solid #fca5a5',
-          borderRadius: 'var(--radius-md)', padding: '14px 20px', color: '#fff',
-          boxShadow: 'var(--shadow-lg)', backdropFilter: 'blur(16px)',
+          borderRadius: '12px', padding: '14px 20px', color: '#fff',
+          boxShadow: '0 16px 36px rgba(0, 0, 0, 0.65)', backdropFilter: 'blur(16px)',
           display: 'flex', alignItems: 'center', gap: '10px'
         }}>
           <AlertCircle size={18} />
@@ -613,7 +662,6 @@ const Discover = () => {
                 {getLocationHeaderBadge()}
               </div>
             </div>
-
             <button
               onClick={() => fetchRecs(activeIntent)}
               disabled={recsLoading || !effectiveLocation}
@@ -1027,6 +1075,7 @@ const Discover = () => {
         </div>
       )}
 
+      </div>
     </div>
   );
 };

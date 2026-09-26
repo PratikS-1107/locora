@@ -1,1 +1,84 @@
-/* App specific supplemental styling if needed */
+/* App & Home Page Editorial Styling */
+
+.home-hero-grid {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 36px !important;
+  width: 100% !important;
+  flex-wrap: nowrap !important;
+}
+
+.home-hero-content {
+  flex: 0 0 auto !important;
+  width: 38% !important;
+  max-width: 440px !important;
+  min-width: 300px !important;
+  min-height: 380px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  z-index: 10 !important;
+}
+
+.home-cards-carousel-container {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  position: relative !important;
+  width: 100% !important;
+  overflow: hidden !important;
+  padding: 10px 4px !important;
+}
+
+.home-bottom-controls {
+  position: fixed !important;
+  bottom: 32px !important;
+  right: 48px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 20px !important;
+  z-index: 50 !important;
+  pointer-events: auto !important;
+}
+
+/* Mobile Screen Breakpoint (Very small screens) */
+@media (max-width: 680px) {
+  .home-hero-grid {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 24px !important;
+  }
+
+  .home-hero-content {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: auto !important;
+  }
+
+  .home-hero-content h1 {
+    font-size: 2.2rem !important;
+    line-height: 1.02 !important;
+  }
+
+  .home-cards-track > div {
+    flex: 0 0 210px !important;
+    width: 210px !important;
+    height: 320px !important;
+  }
+
+  .home-bottom-controls {
+    position: relative !important;
+    bottom: auto !important;
+    right: auto !important;
+    justify-content: center !important;
+    margin-top: 16px !important;
+    width: 100% !important;
+  }
+}
+
+/* Smooth Focus & Accessibility Outlines */
+:focus-visible {
+  outline: 2px solid #38bdf8;
+  outline-offset: 2px;
+}

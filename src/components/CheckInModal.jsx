@@ -158,8 +158,9 @@ const CheckInModal = ({ isOpen, onClose, userId, onCheckinSuccess }) => {
               Check-In Verified!
             </h3>
 
-            <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: '4px' }}>
-              📍 {checkinResult.checkin?.place_name}
+            <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+              <MapPin size={16} style={{ color: 'var(--accent-cyan)' }} />
+              <span>{checkinResult.checkin?.place_name}</span>
             </div>
 
             <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>

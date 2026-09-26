@@ -2133,17 +2133,76 @@ export const validateRecommendationResponse = (response) => {
   return true;
 };
 
+// --- NEW FACTUAL RECOMMENDATIONS ENGINE CLIENT ---
+
+export const fetchRecommendations = async ({
+  location,
+  availableMinutes = null,
+  budget = null,
+  currency = 'INR',
+  date = null,
+  destination = null,
+  category = 'local',
+  preferences = []
+} = {}) => {
+  const coords = location?.coords || location;
+  if (!coords || !Number.isFinite(coords.latitude) || !Number.isFinite(coords.longitude)) {
+    return { success: false, recommendations: [], error: 'Valid latitude and longitude coordinates required' };
+  }
+
+  const payload = {
+    location: {
+      latitude: coords.latitude,
+      longitude: coords.longitude,
+      city: coords.city || location?.city || null,
+      country: coords.country || location?.country || null
+    },
+    availableMinutes: Number.isFinite(Number(availableMinutes)) ? Number(availableMinutes) : null,
+    budget: Number.isFinite(Number(budget)) ? Number(budget) : null,
+    currency: currency || 'INR',
+    date: date || null,
+    destination: destination || null,
+    category: (category || preferences?.[0] || 'local').toLowerCase().trim(),
+    preferences: Array.isArray(preferences) && preferences.length > 0 ? preferences : [(category || 'local').toLowerCase().trim()]
+  };
+
+  try {
+    let res = await fetch('/api/recommendations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).catch(() => null);
+
+    if (!res || !res.ok) {
+      res = await fetch('/api/ai/recommendations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).catch(() => null);
+    }
+
+    if (res && res.ok) {
+      const data = await res.json();
+      return data;
+    }
+  } catch (err) {
+    console.warn('fetchRecommendations network warning:', err);
+  }
+
+  return { success: false, recommendations: [], error: 'Unable to fetch recommendations' };
+};
+
 const getRecommendationsUncached = async (context = {}) => {
-  const intentKey = (context.intent || 'local').toLowerCase();
-  const coords = context.location?.coords;
-  const availableMins = context.available_windows?.[0]?.duration_minutes || context.availableTimeMinutes || null;
-  const budget = context.trip?.remaining_budget ?? context.remainingBudget ?? null;
+  const intentKey = (context.intent || context.category || 'local').toLowerCase();
+  const coords = context.location?.coords || context.location;
+  const availableMins = context.available_windows?.[0]?.duration_minutes || context.availableMinutes || context.availableTimeMinutes || null;
+  const budget = context.trip?.remaining_budget ?? context.budget ?? context.remainingBudget ?? null;
 
   if (!coords || !coords.latitude || !coords.longitude) {
     return [];
   }
 
-  // 1. Send request to Locora Backend API (POST /api/ai/recommendations)
+  // 1. Send request to Locora Backend Recommendations API (POST /api/recommendations with /api/ai/recommendations fallback)
   try {
     const payload = {
       location: {
@@ -2152,6 +2211,7 @@ const getRecommendationsUncached = async (context = {}) => {
         city: context.location?.city || null,
         country: context.location?.country || null
       },
+      availableMinutes: availableMins,
       availableTime: {
         durationMinutes: availableMins
       },
@@ -2161,7 +2221,7 @@ const getRecommendationsUncached = async (context = {}) => {
       category: intentKey
     };
 
-    const res = await fetch('/api/ai/recommendations', {
+    let res = await fetch('/api/recommendations', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -2169,43 +2229,69 @@ const getRecommendationsUncached = async (context = {}) => {
       body: JSON.stringify(payload)
     }).catch(() => null);
 
+    if (!res || !res.ok) {
+      res = await fetch('/api/ai/recommendations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      }).catch(() => null);
+    }
+
     if (res && res.ok) {
       const result = await res.json();
       if (result.success && Array.isArray(result.recommendations) && result.recommendations.length > 0) {
-        return result.recommendations.map((rec, idx) => ({
-          id: rec.id || rec.placeId || `rec-server-${idx}`,
-          placeId: rec.placeId || rec.id,
-          name: rec.title || rec.name || 'Local Place',
-          address: rec.address || (typeof rec.location === 'object' ? rec.location.name : rec.location) || 'Local Area',
-          latitude: rec.latitude ?? rec.location?.lat ?? null,
-          longitude: rec.longitude ?? rec.location?.lng ?? null,
-          category: rec.category || intentKey.charAt(0).toUpperCase() + intentKey.slice(1),
-          description: rec.description || 'Authentic place or experience near your location.',
-          location: typeof rec.location === 'object' ? rec.location : { name: rec.location || 'Local Vicinity', distance_km: parseFloat(rec.distance) || 1.2 },
-          distance: rec.distance || `${parseFloat(rec.location?.distance_km || 1.2).toFixed(1)} km away`,
-          rating: rec.rating !== undefined ? rec.rating : null, // REAL GOOGLE RATING (NO FABRICATION)
-          reviewCount: rec.reviewCount !== undefined ? rec.reviewCount : null, // REAL REVIEW COUNT
-          openNow: rec.openNow ?? null,
-          priceLevel: rec.priceLevel ?? null,
-          priceDisplay: rec.priceDisplay || 'Price unavailable',
-          durationMinutes: parseInt(rec.durationMinutes || rec.estimatedDuration || rec.duration_minutes) || 60,
-          duration_minutes: parseInt(rec.durationMinutes || rec.estimatedDuration || rec.duration_minutes) || 60,
-          travelMinutes: rec.travelMinutes || rec.estimated_travel_minutes || 15,
-          estimated_travel_minutes: rec.travelMinutes || rec.estimated_travel_minutes || 15,
-          estimated_cost: Number(rec.estimated_cost ?? rec.estimatedCost ?? rec.price ?? 0),
-          currency: rec.currency || 'INR',
-          whyVisit: rec.whyVisit || rec.why_it_fits || rec.whyItFits || rec.reason || (availableMins ? `Fits your ${Math.floor(availableMins / 60)}h ${availableMins % 60}m gap` : 'Verified destination near your location'),
-          why_it_fits: rec.whyVisit || rec.why_it_fits || rec.whyItFits || rec.reason || (availableMins ? `Fits your ${Math.floor(availableMins / 60)}h ${availableMins % 60}m gap` : 'Verified destination near your location'),
-          image: rec.image || null, // STRICTLY from original Google Place object
-          googleMapsUrl: rec.googleMapsUrl || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(rec.title || rec.name || 'Place')}`
-        }));
+        return result.recommendations.map((rec, idx) => {
+          const travelMins = rec.travelTimeMinutes || rec.travelMinutes || rec.estimated_travel_minutes || Math.max(5, Math.round((parseFloat(rec.distanceKm || rec.location?.distance_km || 1.2)) * 8));
+          const visitMins = rec.estimatedVisitMinutes || rec.durationMinutes || rec.duration_minutes || 60;
+          const totalMins = rec.estimatedTotalMinutes || (travelMins + visitMins);
+
+          return {
+            id: rec.id || rec.placeId || `rec-server-${idx}`,
+            placeId: rec.placeId || rec.id,
+            name: rec.name || rec.title || 'Local Place',
+            title: rec.title || rec.name || 'Local Place',
+            address: rec.address || (typeof rec.location === 'object' ? rec.location.name : rec.location) || 'Local Area',
+            latitude: rec.latitude ?? rec.location?.lat ?? null,
+            longitude: rec.longitude ?? rec.location?.lng ?? null,
+            category: rec.category || intentKey.charAt(0).toUpperCase() + intentKey.slice(1),
+            description: rec.description || 'Authentic place or experience near your location.',
+            location: typeof rec.location === 'object' ? rec.location : { name: rec.location || rec.address || 'Local Vicinity', distance_km: rec.distanceKm || parseFloat(rec.distance) || 1.2 },
+            distance: rec.distance || rec.distanceLabel || `${parseFloat(rec.distanceKm || rec.location?.distance_km || 1.2).toFixed(1)} km away`,
+            distanceKm: rec.distanceKm || parseFloat(rec.distance) || 1.2,
+            distanceLabel: rec.distanceLabel || rec.distance || `${parseFloat(rec.distanceKm || 1.2).toFixed(1)} km away`,
+            rating: rec.rating !== undefined ? rec.rating : null, // REAL GOOGLE RATING (NO FABRICATION)
+            reviewCount: rec.reviewCount !== undefined ? rec.reviewCount : null, // REAL REVIEW COUNT
+            openNow: rec.openNow ?? null,
+            price: rec.price || { type: 'unavailable', amount: null, currency: 'INR' },
+            priceLevel: rec.priceLevel ?? null,
+            priceDisplay: rec.priceDisplay || (rec.price?.type === 'free' ? 'Free Entry' : 'Price unavailable'),
+            travelTimeMinutes: travelMins,
+            travelMinutes: travelMins,
+            estimated_travel_minutes: travelMins,
+            estimatedVisitMinutes: visitMins,
+            durationMinutes: visitMins,
+            duration_minutes: visitMins,
+            estimatedTotalMinutes: totalMins,
+            estimated_cost: Number(rec.estimated_cost ?? rec.estimatedCost ?? rec.price?.amount ?? 0),
+            currency: rec.currency || rec.price?.currency || 'INR',
+            reason: rec.reason || rec.whyVisit || rec.why_it_fits || (availableMins ? `Fits your ${Math.floor(availableMins / 60)}h ${availableMins % 60}m gap` : 'Verified destination near your location'),
+            whyVisit: rec.reason || rec.whyVisit || rec.why_it_fits || (availableMins ? `Fits your ${Math.floor(availableMins / 60)}h ${availableMins % 60}m gap` : 'Verified destination near your location'),
+            why_it_fits: rec.reason || rec.whyVisit || rec.why_it_fits || (availableMins ? `Fits your ${Math.floor(availableMins / 60)}h ${availableMins % 60}m gap` : 'Verified destination near your location'),
+            imageUrl: rec.imageUrl || rec.image || null,
+            image: rec.imageUrl || rec.image || null, // STRICTLY original verified photo
+            mapsUrl: rec.mapsUrl || rec.googleMapsUrl || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(rec.title || rec.name || 'Place')}&query_place_id=${rec.placeId || ''}`,
+            googleMapsUrl: rec.googleMapsUrl || rec.mapsUrl || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(rec.title || rec.name || 'Place')}&query_place_id=${rec.placeId || ''}`
+          };
+        });
       }
     }
   } catch (err) {
     // Silent catch
   }
 
-  // 2. Direct Google Places call if backend AI endpoint is unreachable
+  // 2. Direct Google Places call fallback if backend AI endpoint is unreachable
   if (coords && coords.latitude && coords.longitude) {
     const googlePlaces = await fetchGoogleNearbyPlaces({
       latitude: coords.latitude,
@@ -2278,6 +2364,198 @@ export const addRecommendationToItinerary = async (recommendation, tripId, dateS
   });
 
   return { data: createdItem, error };
+};
+
+/**
+ * Fetch context-aware real place recommendations for a specific trip day.
+ * Considers destination, date, available time, remaining budget, and existing activities.
+ */
+export const getTripDayRecommendations = async ({
+  trip,
+  day,
+  dayActivities = [],
+  allActivities = [],
+  category = null,
+  customAvailableMinutes = null,
+  customBudget = null
+}) => {
+  if (!trip) return { success: false, recommendations: [] };
+
+  // 1. Calculate unallocated daytime minutes (assuming 10-hour day = 600 min)
+  const scheduledMinutes = dayActivities.reduce((sum, act) => sum + (Number(act.duration_minutes) || 60), 0);
+  const calculatedAvailableMinutes = Math.max(30, 600 - scheduledMinutes);
+  const availableMinutes = customAvailableMinutes !== null ? customAvailableMinutes : calculatedAvailableMinutes;
+
+  // 2. Calculate remaining budget
+  let remainingBudget = customBudget !== null ? customBudget : null;
+  if (remainingBudget === null && trip.budget !== null && trip.budget !== undefined && Number(trip.budget) > 0) {
+    const totalSpent = allActivities.reduce((sum, act) => sum + (Number(act.estimated_cost) || 0), 0);
+    remainingBudget = Math.max(0, Number(trip.budget) - totalSpent);
+  }
+
+  // 3. Determine anchor location / coordinates
+  let lat = null;
+  let lng = null;
+  let city = trip.destination || 'Local Area';
+
+  // Check if any planned activity on this day has coordinates
+  const lastActWithCoords = [...dayActivities].reverse().find(a => Number.isFinite(a.latitude) && Number.isFinite(a.longitude));
+  if (lastActWithCoords) {
+    lat = lastActWithCoords.latitude;
+    lng = lastActWithCoords.longitude;
+  }
+
+  // If no activity coordinates, resolve from destination name
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    const resolved = await resolveDestinationLocation(trip.destination);
+    if (resolved && Number.isFinite(resolved.latitude) && Number.isFinite(resolved.longitude)) {
+      lat = resolved.latitude;
+      lng = resolved.longitude;
+      city = resolved.city || trip.destination;
+    }
+  }
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return { success: false, recommendations: [], error: 'Unable to resolve destination coordinates.' };
+  }
+
+  // 4. Call Recommendation Engine API
+  const categoryParam = category ? category.toLowerCase().trim() : null;
+  const res = await fetchRecommendations({
+    location: {
+      latitude: lat,
+      longitude: lng,
+      city: city,
+      country: trip.country || ''
+    },
+    availableMinutes,
+    budget: remainingBudget,
+    currency: allActivities[0]?.currency || 'INR',
+    category: categoryParam,
+    preferences: categoryParam ? [categoryParam] : [],
+    date: day?.date || null,
+    destination: trip.destination
+  });
+
+  // 5. Exclude activities that are already planned on this day
+  if (res.success && Array.isArray(res.recommendations)) {
+    const existingTitles = new Set(dayActivities.map(a => (a.title || '').toLowerCase().trim()));
+    const filtered = res.recommendations.filter(r => !existingTitles.has((r.name || r.title || '').toLowerCase().trim()));
+    return {
+      ...res,
+      recommendations: filtered,
+      availableMinutes,
+      remainingBudget,
+      scheduledMinutes
+    };
+  }
+
+  return res;
+};
+
+/**
+ * Add a suggested recommendation directly to a specific trip day as a real activity.
+ */
+export const addRecommendationToTripDay = async ({
+  recommendation,
+  tripId,
+  itineraryDayId,
+  dayActivities = [],
+  preferredStartTime = null
+}) => {
+  if (!tripId || !itineraryDayId || !recommendation) {
+    return { data: null, error: new Error('Trip ID, day ID, and recommendation required') };
+  }
+
+  const duration = Number(recommendation.estimatedVisitMinutes || recommendation.duration_minutes || recommendation.durationMinutes || 60);
+  const cost = Number(recommendation.price?.amount || recommendation.estimated_cost || 0);
+  const title = recommendation.name || recommendation.title || 'Verified Place';
+  const category = recommendation.category || 'Sightseeing';
+  const locationName = recommendation.address || (typeof recommendation.location === 'object' ? recommendation.location.name : recommendation.location) || 'Local Area';
+  const rawImage = recommendation.imageUrl || recommendation.image || null;
+
+  // Default times sequentially
+  let startTime = preferredStartTime || '10:00 AM';
+  if (!preferredStartTime && dayActivities.length > 0) {
+    const count = dayActivities.length;
+    if (count === 1) startTime = '01:30 PM';
+    else if (count === 2) startTime = '04:00 PM';
+    else if (count >= 3) startTime = '07:00 PM';
+  }
+
+  const payload = {
+    tripId,
+    itineraryDayId,
+    title,
+    description: recommendation.reason || recommendation.whyVisit || recommendation.description || 'Verified place recommendation.',
+    category,
+    location: locationName,
+    address: recommendation.address || '',
+    latitude: recommendation.latitude || null,
+    longitude: recommendation.longitude || null,
+    country: recommendation.country || '',
+    country_code: recommendation.country_code || '',
+    startTime,
+    durationMinutes: duration,
+    estimatedCost: cost,
+    currency: recommendation.currency || recommendation.price?.currency || 'INR',
+    imageUrl: rawImage,
+    is_local_experience: true,
+    is_cultural_experience: category.toLowerCase().includes('culture') || category.toLowerCase().includes('heritage'),
+    source: 'recommendation',
+    sortOrder: dayActivities.length
+  };
+
+  return await createActivity(payload);
+};
+
+// --- CONVERSATIONAL DISCOVERY SERVICE (Powered by NVIDIA) ---
+
+export const sendConversationalDiscoveryMessage = async ({
+  message,
+  history = [],
+  location = null,
+  activeTrip = null,
+  conversationState = null
+}) => {
+  if (!message || !message.trim()) {
+    return { success: false, reply: 'Please provide a message.', recommendations: [], conversationState };
+  }
+
+  const payload = {
+    message: message.trim(),
+    history,
+    location,
+    activeTrip,
+    conversationState
+  };
+
+  try {
+    const res = await fetch('/api/chat/discovery', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      return data;
+    } else {
+      const errData = await res.json().catch(() => null);
+      return {
+        success: false,
+        reply: errData?.reply || 'Unable to connect to Conversational Discovery service.',
+        recommendations: []
+      };
+    }
+  } catch (err) {
+    console.warn('Conversational discovery fetch error:', err);
+    return {
+      success: false,
+      reply: 'Network connection issue. Please check your connection and try again.',
+      recommendations: []
+    };
+  }
 };
 
 // --- EXPLORE DATASET & VERIFIED PLACE DISCOVERY SERVICES ---

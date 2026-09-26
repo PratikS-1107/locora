@@ -1,4 +1,5 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 let activeModalsCount = 0;
@@ -33,6 +34,13 @@ const Modal = ({
   bodyPadding,
   className = ''
 }) => {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
+
   useEffect(() => {
     if (!isOpen) return;
 
@@ -51,12 +59,12 @@ const Modal = ({
     };
   }, [isOpen, onClose]);
 
-  if (!isOpen) return null;
+  if (!isOpen || !mounted) return null;
 
   const showHeader = !hideHeader && title !== null && title !== undefined;
   const paddingValue = bodyPadding !== undefined ? bodyPadding : (showHeader ? '24px' : '0');
 
-  return (
+  const modalNode = (
     <div
       className="modal-overlay"
       onClick={onClose}
@@ -97,6 +105,8 @@ const Modal = ({
       </div>
     </div>
   );
+
+  return createPortal(modalNode, document.body);
 };
 
 export default Modal;

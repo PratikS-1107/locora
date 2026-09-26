@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import Modal from './Modal';
 import AchievementCard from './AchievementCard';
+import CustomDropdown from './CustomDropdown';
 import {
   Award,
   CheckCircle2,
@@ -11,7 +12,8 @@ import {
   ArrowRight,
   Info,
   Calendar,
-  Layers
+  Layers,
+  Filter
 } from 'lucide-react';
 
 const CountryAchievementModal = ({ isOpen, onClose, countryStat, allAchievements, onSelectAchievement }) => {
@@ -87,7 +89,7 @@ const CountryAchievementModal = ({ isOpen, onClose, countryStat, allAchievements
             <div style={{
               width: `${Math.max(3, unlockedPercentage)}%`,
               height: '100%',
-              background: 'linear-gradient(90deg, #3b82f6 0%, #10b981 100%)',
+              background: 'linear-gradient(90deg, #0ea5e9 0%, #10b981 100%)',
               borderRadius: '4px',
               transition: 'width 0.4s ease'
             }} />
@@ -117,16 +119,20 @@ const CountryAchievementModal = ({ isOpen, onClose, countryStat, allAchievements
           {/* Category Dropdown */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Category:</span>
-            <select
-              className="form-select"
+            <CustomDropdown
               value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-              style={{ height: '34px', padding: '0 10px', fontSize: '0.8rem', minWidth: '130px' }}
-            >
-              {categories.map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-            </select>
+              onChange={(val) => setSelectedCategory(val)}
+              options={categories.map(c => ({ value: c, label: c }))}
+              pill={false}
+              align="right"
+              minWidth="140px"
+              buttonStyle={{
+                height: '34px',
+                padding: '0 12px',
+                fontSize: '0.8rem',
+                borderRadius: '8px'
+              }}
+            />
           </div>
         </div>
 

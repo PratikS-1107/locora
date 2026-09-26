@@ -292,35 +292,84 @@ const CreateTrip = () => {
   };
 
   return (
-    <div style={{ width: '100%', maxWidth: '640px', margin: '0 auto', paddingBottom: '60px' }}>
+    <div
+      style={{
+        position: 'relative',
+        width: '100%',
+        minHeight: '100vh',
+        backgroundColor: '#070a10',
+        color: '#ffffff',
+        overflowX: 'hidden'
+      }}
+    >
+      <div
+        style={{
+          position: 'relative',
+          zIndex: 10,
+          width: '100%',
+          maxWidth: '680px',
+          margin: '0 auto',
+          padding: '100px 24px 80px 24px'
+        }}
+      >
+        {/* Toast Notification */}
+        {toastMsg && (
+          <div style={{
+            position: 'fixed', bottom: '24px', right: '24px', zIndex: 1000,
+            backgroundColor: 'rgba(12, 16, 26, 0.95)', border: '1px solid #0ea5e9',
+            borderRadius: '12px', padding: '14px 20px', color: '#fff',
+            boxShadow: '0 16px 36px rgba(0, 0, 0, 0.65)', backdropFilter: 'blur(16px)',
+            display: 'flex', alignItems: 'center', gap: '10px'
+          }}>
+            <CheckCircle2 size={18} style={{ color: '#38bdf8' }} />
+            <span>{toastMsg}</span>
+          </div>
+        )}
 
-      {/* Toast Notification */}
-      {toastMsg && (
-        <div style={{
-          position: 'fixed', bottom: '24px', right: '24px', zIndex: 1000,
-          backgroundColor: 'rgba(15, 23, 42, 0.95)', border: '1px solid var(--accent-emerald)',
-          borderRadius: 'var(--radius-md)', padding: '14px 20px', color: '#fff',
-          boxShadow: 'var(--shadow-lg)', backdropFilter: 'blur(16px)',
-          display: 'flex', alignItems: 'center', gap: '10px'
-        }}>
-          <CheckCircle2 size={18} style={{ color: 'var(--accent-emerald)' }} />
-          <span>{toastMsg}</span>
+        {/* Header */}
+        <div className="page-stagger-header" style={{ marginBottom: '28px', textAlign: 'center' }}>
+          <h1
+            style={{
+              fontFamily: 'var(--font-heading)',
+              fontSize: 'clamp(2.2rem, 3.2vw, 2.7rem)',
+              fontWeight: 900,
+              margin: '0 0 8px 0',
+              color: '#ffffff',
+              letterSpacing: '-0.03em',
+              textShadow: '0 2px 14px rgba(0, 0, 0, 0.7)'
+            }}
+          >
+            {isEditMode ? 'Edit Trip Details' : 'Create New Trip'}
+          </h1>
+          <p
+            style={{
+              fontSize: 'clamp(0.9rem, 1.1vw, 1rem)',
+              color: 'rgba(226, 232, 240, 0.8)',
+              margin: 0,
+              lineHeight: 1.5,
+              textShadow: '0 1px 8px rgba(0, 0, 0, 0.6)'
+            }}
+          >
+            {isEditMode
+              ? 'Update your trip destination, dates, and cover photo.'
+              : 'Start your custom itinerary. Add destinations and schedule activities next.'}
+          </p>
         </div>
-      )}
 
-      {/* Header */}
-      <div style={{ marginBottom: '28px' }}>
-        <h1 style={{ fontSize: '2rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)', letterSpacing: '-0.03em' }}>
-          {isEditMode ? 'Edit Trip Details' : 'Create New Trip'}
-        </h1>
-        <p style={{ fontSize: '0.925rem', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
-          {isEditMode ? 'Update your trip destination, dates, and cover.' : 'Start your custom itinerary. Add destination and schedule activities next.'}
-        </p>
-      </div>
-
-      {/* Form Card */}
-      <div className="glass-panel" style={{ padding: '28px' }}>
-        <form onSubmit={handleSubmit}>
+        {/* Form Card */}
+        <div
+          className="page-stagger-hero"
+          style={{
+            backgroundColor: 'rgba(14, 20, 34, 0.82)',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+            border: '1px solid rgba(255, 255, 255, 0.12)',
+            borderRadius: '24px',
+            padding: '36px 32px',
+            boxShadow: '0 24px 60px rgba(0, 0, 0, 0.65)'
+          }}
+        >
+          <form onSubmit={handleSubmit}>
 
           {errorMsg && (
             <div style={{
@@ -592,12 +641,20 @@ const CreateTrip = () => {
           </div>
 
           {/* Buttons */}
-          <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+          <div style={{ display: 'flex', gap: '14px', justifyContent: 'flex-end', marginTop: '28px' }}>
             <button
               type="button"
               onClick={() => navigate('/my-trips')}
-              className="btn btn-secondary"
-              style={{ padding: '10px 20px', fontSize: '0.9rem' }}
+              style={{
+                padding: '12px 24px',
+                borderRadius: '9999px',
+                backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                border: '1px solid rgba(255, 255, 255, 0.14)',
+                color: '#ffffff',
+                fontSize: '0.9rem',
+                fontWeight: 600,
+                cursor: 'pointer'
+              }}
             >
               Cancel
             </button>
@@ -605,8 +662,21 @@ const CreateTrip = () => {
             <button
               type="submit"
               disabled={isSubmitting || isUploading}
-              className="btn btn-primary"
-              style={{ padding: '10px 24px', fontSize: '0.9rem', borderRadius: 'var(--radius-sm)' }}
+              style={{
+                padding: '12px 28px',
+                borderRadius: '9999px',
+                background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)',
+                border: 'none',
+                color: '#ffffff',
+                fontSize: '0.9rem',
+                fontWeight: 700,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                cursor: isSubmitting || isUploading ? 'not-allowed' : 'pointer',
+                opacity: isSubmitting || isUploading ? 0.7 : 1,
+                boxShadow: '0 8px 24px rgba(14, 165, 233, 0.35)'
+              }}
             >
               <span>
                 {isSubmitting
@@ -619,6 +689,7 @@ const CreateTrip = () => {
 
         </form>
 
+      </div>
       </div>
     </div>
   );

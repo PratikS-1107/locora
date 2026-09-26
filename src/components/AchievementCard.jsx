@@ -64,7 +64,7 @@ const AchievementCard = ({ achievement, onClick }) => {
   const progressPercent = Math.min(100, Math.round((progressCurrent / progressTotal) * 100));
 
   const isSecretLocked = secret && !isUnlocked;
-  const displayIcon = isSecretLocked ? '🔒' : icon;
+  const displayIcon = isSecretLocked ? <Lock size={22} style={{ color: 'var(--text-muted)' }} /> : icon;
   const displayName = isSecretLocked ? 'Secret Achievement' : name;
   const displayDescription = isSecretLocked
     ? (secretHint || 'Some journeys are meant to be discovered in the wild.')
@@ -184,7 +184,7 @@ const AchievementCard = ({ achievement, onClick }) => {
               <div style={{
                 width: `${progressPercent}%`,
                 height: '100%',
-                background: 'linear-gradient(90deg, #3b82f6 0%, #38bdf8 100%)',
+                background: 'linear-gradient(90deg, #0ea5e9 0%, #38bdf8 100%)',
                 borderRadius: '3px',
                 transition: 'width 0.3s ease'
               }} />

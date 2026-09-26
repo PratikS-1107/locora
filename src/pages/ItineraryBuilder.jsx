@@ -16,10 +16,14 @@ import {
   createActivity,
   updateActivity,
   deleteActivity,
-  reorderActivities
+  reorderActivities,
+  getTripDayRecommendations,
+  addRecommendationToTripDay
 } from '../services/api';
 import ActivityCard from '../components/ActivityCard';
+import RecommendationCard from '../components/RecommendationCard';
 import Modal from '../components/Modal';
+import { formatDuration } from '../utils/formatters';
 import {
   ArrowLeft,
   Plus,
@@ -40,7 +44,9 @@ import {
   ChevronUp,
   ChevronDown,
   Upload,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Sparkles,
+  RefreshCw
 } from 'lucide-react';
 
 const CATEGORIES = [
@@ -127,6 +133,13 @@ const ItineraryBuilder = () => {
   // Trip metadata editable state
   const [tripTitleInput, setTripTitleInput] = useState('');
   const [tripDescInput, setTripDescInput] = useState('');
+
+  // Context-Aware Recommendations State for Active Day
+  const [dayRecs, setDayRecs] = useState([]);
+  const [loadingDayRecs, setLoadingDayRecs] = useState(false);
+  const [recCategory, setRecCategory] = useState(null);
+  const [addedRecIds, setAddedRecIds] = useState([]);
+  const [showRecsPanel, setShowRecsPanel] = useState(true);
 
   // Load Trip, Days, and Activities
   const loadWorkspace = async () => {
@@ -546,6 +559,95 @@ const ItineraryBuilder = () => {
   const remainingBudget = plannedBudget !== null ? (plannedBudget - totalActivityExpenses) : null;
   const isOverBudget = plannedBudget !== null && !hasMultipleCurrencies && remainingBudget < 0;
 
+  // Day-level remaining time and context metrics
+  const scheduledMinutesForDay = currentDayActivities.reduce((sum, act) => sum + (Number(act.duration_minutes) || 60), 0);
+  const availableGapMinutes = Math.max(30, 600 - scheduledMinutesForDay);
+
+  // ----------------------------------------------------
+  // Context-Aware Day Recommendations
+  // ----------------------------------------------------
+  const refreshDayRecs = async () => {
+    if (!trip || !currentDay) return;
+    setLoadingDayRecs(true);
+    try {
+      const res = await getTripDayRecommendations({
+        trip,
+        day: currentDay,
+        dayActivities: currentDayActivities,
+        allActivities: activities,
+        category: recCategory
+      });
+
+      if (res.success && Array.isArray(res.recommendations)) {
+        setDayRecs(res.recommendations);
+      } else {
+        setDayRecs([]);
+      }
+    } catch (err) {
+      console.error('Error fetching day recommendations:', err);
+      setDayRecs([]);
+    } finally {
+      setLoadingDayRecs(false);
+    }
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+    const timer = setTimeout(async () => {
+      if (!trip || !currentDay) return;
+      setLoadingDayRecs(true);
+      try {
+        const res = await getTripDayRecommendations({
+          trip,
+          day: currentDay,
+          dayActivities: currentDayActivities,
+          allActivities: activities,
+          category: recCategory
+        });
+
+        if (isMounted) {
+          if (res.success && Array.isArray(res.recommendations)) {
+            setDayRecs(res.recommendations);
+          } else {
+            setDayRecs([]);
+          }
+        }
+      } catch (err) {
+        if (isMounted) setDayRecs([]);
+      } finally {
+        if (isMounted) setLoadingDayRecs(false);
+      }
+    }, 280);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
+  }, [activeDayIndex, currentDay?.id, recCategory, trip?.destination, activities.length]);
+
+  const handleAddRecToDay = async (rec) => {
+    if (!currentDay || !trip) return;
+    try {
+      const res = await addRecommendationToTripDay({
+        recommendation: rec,
+        tripId: trip.id,
+        itineraryDayId: currentDay.id,
+        dayActivities: currentDayActivities
+      });
+
+      if (res.error || !res.data) {
+        showToast('Unable to add activity to this day.');
+      } else {
+        const newAct = res.data;
+        setActivities(prev => [...prev, newAct]);
+        setAddedRecIds(prev => [...prev, rec.placeId || rec.id]);
+        showToast(`Added "${rec.name || rec.title}" to Day ${currentDay.day_number}!`);
+      }
+    } catch (err) {
+      showToast('Could not add recommendation.');
+    }
+  };
+
   // ----------------------------------------------------
   // UI Render
   // ----------------------------------------------------
@@ -866,6 +968,104 @@ const ItineraryBuilder = () => {
               ))
             )}
           </div>
+
+          {/* CONTEXT-AWARE SMART RECOMMENDATIONS FOR SELECTED DAY */}
+          {currentDay && (
+            <div
+              className="glass-panel"
+              style={{
+                marginTop: '32px',
+                padding: '22px',
+                borderRadius: 'var(--radius-lg)',
+                border: '1px solid var(--border-subtle)',
+                backgroundColor: 'rgba(15, 23, 42, 0.7)'
+              }}
+            >
+              {/* Header with Context Badges */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '14px', marginBottom: '16px' }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                    <Sparkles size={18} style={{ color: 'var(--accent-purple)' }} />
+                    <h3 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
+                      Suggested for Day {currentDay.day_number} in {trip.destination || 'Area'}
+                    </h3>
+                  </div>
+                  <p style={{ margin: 0, fontSize: '0.825rem', color: 'var(--text-secondary)' }}>
+                    Real nearby attractions and activities fitting your available schedule and budget.
+                  </p>
+                </div>
+
+                {/* Day Metrics */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <span className="badge" style={{ backgroundColor: 'rgba(56, 189, 248, 0.12)', color: 'var(--accent-cyan)', border: '1px solid rgba(56, 189, 248, 0.25)', fontSize: '0.725rem', fontWeight: 600 }}>
+                    <Clock size={11} /> Available Gap: ~{formatDuration(availableGapMinutes)}
+                  </span>
+                  {remainingBudget !== null && (
+                    <span className="badge" style={{ backgroundColor: 'rgba(16, 185, 129, 0.12)', color: 'var(--accent-emerald)', border: '1px solid rgba(16, 185, 129, 0.25)', fontSize: '0.725rem', fontWeight: 600 }}>
+                      <Coins size={11} /> Remaining: ₹{remainingBudget.toLocaleString()}
+                    </span>
+                  )}
+                  <button
+                    onClick={refreshDayRecs}
+                    disabled={loadingDayRecs}
+                    className="btn btn-secondary"
+                    style={{ padding: '4px 10px', fontSize: '0.725rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                    title="Refresh suggestions"
+                  >
+                    <RefreshCw size={11} className={loadingDayRecs ? 'animate-spin' : ''} />
+                    <span>{loadingDayRecs ? 'Finding...' : 'Refresh'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Category Pills */}
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '18px' }}>
+                {[
+                  { id: null, label: 'All' },
+                  { id: 'food', label: 'Food' },
+                  { id: 'culture', label: 'Culture' },
+                  { id: 'nature', label: 'Nature' },
+                  { id: 'hidden gems', label: 'Hidden Gems' },
+                  { id: 'activities', label: 'Activities' },
+                  { id: 'workshops', label: 'Workshops' },
+                  { id: 'local', label: 'Local' }
+                ].map(cat => (
+                  <button
+                    key={cat.label}
+                    onClick={() => setRecCategory(cat.id)}
+                    className={recCategory === cat.id ? 'btn btn-primary' : 'btn btn-secondary'}
+                    style={{ padding: '4px 10px', fontSize: '0.725rem' }}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Recommendations Cards Grid */}
+              {loadingDayRecs ? (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
+                  {[1, 2].map(i => (
+                    <div key={i} className="glass-panel" style={{ height: '360px', opacity: 0.5, animation: 'pulse 1.5s infinite' }} />
+                  ))}
+                </div>
+              ) : dayRecs.length > 0 ? (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
+                  {dayRecs.map(rec => (
+                    <RecommendationCard
+                      key={rec.placeId || rec.id}
+                      recommendation={rec}
+                      onAddToItinerary={handleAddRecToDay}
+                      isAdded={addedRecIds.includes(rec.placeId || rec.id)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                  No additional recommendations matched this day's constraints. Try switching categories or expanding your filters.
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* RIGHT / SIDEBAR (BUDGET & TRIP DETAILS) */}

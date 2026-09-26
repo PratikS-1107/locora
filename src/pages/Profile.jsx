@@ -6,6 +6,7 @@ import AchievementCard from '../components/AchievementCard';
 import CountryAchievementModal from '../components/CountryAchievementModal';
 import CheckInModal from '../components/CheckInModal';
 import Modal from '../components/Modal';
+import CustomDropdown from '../components/CustomDropdown';
 import {
   User,
   Edit3,
@@ -22,7 +23,9 @@ import {
   Camera,
   Compass,
   Check,
-  Navigation
+  Navigation,
+  Shield,
+  Flag
 } from 'lucide-react';
 
 const Profile = () => {
@@ -143,8 +146,8 @@ const Profile = () => {
         const { publicUrl, error: uploadErr } = await uploadProfileAvatar(user.id, selectedImageFile);
         if (uploadErr || !publicUrl) {
           console.error('Avatar upload failed:', uploadErr);
-          const detail = uploadErr?.message || 'Unable to upload your profile picture. Please try again.';
-          setStatusMsg(detail.includes('5MB') || detail.includes('format') ? detail : 'Unable to upload your profile picture. Please try again.');
+          const detail = uploadErr?.message || 'Failed to upload profile image.';
+          setStatusMsg(`Image upload failed: ${detail}`);
           setIsSaving(false);
           return;
         }
@@ -220,46 +223,9 @@ const Profile = () => {
       return;
     }
 
-    setStatusMsg('');
     setSelectedImageFile(file);
     const objectUrl = URL.createObjectURL(file);
     setAvatarPreview(objectUrl);
-  };
-
-  // Handle Remove Profile Picture Confirmation & Deletion
-  const handleConfirmRemoveAvatar = async () => {
-    setIsRemovingAvatar(true);
-    setAvatarRemoveError('');
-
-    try {
-      if (avatarUrl && user?.id) {
-        const res = await removeProfileAvatar(avatarUrl);
-        if (!res.success) {
-          console.error('Failed to remove profile avatar:', res.error);
-          const errMsg = res.error?.message || 'Unable to remove your profile picture. Please try again.';
-          setAvatarRemoveError(errMsg);
-          setStatusMsg('Unable to remove your profile picture. Please try again.');
-          setIsRemovingAvatar(false);
-          return;
-        }
-      }
-
-      // Clean up local preview object URL if any
-      if (avatarPreview) {
-        URL.revokeObjectURL(avatarPreview);
-        setAvatarPreview(null);
-      }
-      setSelectedImageFile(null);
-      setAvatarUrl('');
-      setShowRemoveAvatarConfirm(false);
-      setStatusMsg('Profile picture removed successfully.');
-    } catch (err) {
-      console.error('Remove avatar exception:', err);
-      setAvatarRemoveError(err.message || 'Unable to remove your profile picture. Please try again.');
-      setStatusMsg('Unable to remove your profile picture. Please try again.');
-    } finally {
-      setIsRemovingAvatar(false);
-    }
   };
 
   const handleCloseEditModal = () => {
@@ -271,6 +237,27 @@ const Profile = () => {
     setStatusMsg('');
     setEmailNotice('');
     setIsEditModalOpen(false);
+  };
+
+  // Handle Remove Profile Picture
+  const handleRemoveAvatar = async () => {
+    setIsRemovingAvatar(true);
+    setAvatarRemoveError('');
+    try {
+      const res = await removeProfileAvatar(avatarUrl);
+      if (res?.error) {
+        setAvatarRemoveError(res.error.message || 'Failed to remove avatar.');
+      } else {
+        setAvatarUrl('');
+        setAvatarPreview(null);
+        setSelectedImageFile(null);
+        setShowRemoveAvatarConfirm(false);
+      }
+    } catch (err) {
+      setAvatarRemoveError(err.message || 'Failed to remove avatar.');
+    } finally {
+      setIsRemovingAvatar(false);
+    }
   };
 
   // Handle Log Out
@@ -322,7 +309,67 @@ const Profile = () => {
   });
 
   return (
-    <div style={{ width: '100%', maxWidth: '1100px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '36px', paddingBottom: '60px' }}>
+    <div
+      style={{
+        position: 'relative',
+        width: '100%',
+        minHeight: '100vh',
+        backgroundColor: '#070a10',
+        color: '#ffffff',
+        overflowX: 'hidden'
+      }}
+    >
+      {/* 1. CINEMATIC TRAVEL BACKGROUND (USES USER PROFILE PICTURE DYNAMICALLY) */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'fixed',
+          inset: 0,
+          width: '100vw',
+          height: '100vh',
+          overflow: 'hidden',
+          backgroundColor: '#070a10',
+          pointerEvents: 'none',
+          zIndex: 0
+        }}
+      >
+        <img
+          key={(avatarPreview && avatarPreview.trim()) || (avatarUrl && avatarUrl.trim()) || 'default-profile-bg'}
+          className="page-bg-entrance"
+          src={(avatarPreview && avatarPreview.trim()) || (avatarUrl && avatarUrl.trim()) || '/profile-bg.jpg'}
+          alt="Traveler Profile Background"
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            objectPosition: 'center',
+            filter: Boolean((avatarPreview && avatarPreview.trim()) || (avatarUrl && avatarUrl.trim()))
+              ? 'brightness(0.48) contrast(1.1) saturate(1.15) blur(6px)'
+              : 'brightness(0.70) contrast(1.05)',
+            transform: Boolean((avatarPreview && avatarPreview.trim()) || (avatarUrl && avatarUrl.trim()))
+              ? 'scale(1.06)'
+              : 'scale(1)',
+            transition: 'filter 0.6s ease, transform 0.6s ease, opacity 0.6s ease'
+          }}
+          onError={(e) => {
+            e.currentTarget.src = '/profile-bg.jpg';
+            e.currentTarget.style.filter = 'brightness(0.70) contrast(1.05)';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+        />
+
+        {/* Soft Dark Vignette & Gradient Overlay */}
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: Boolean((avatarPreview && avatarPreview.trim()) || (avatarUrl && avatarUrl.trim()))
+              ? 'linear-gradient(to bottom, rgba(7, 10, 16, 0.42) 0%, rgba(7, 10, 16, 0.60) 25%, rgba(7, 10, 16, 0.82) 65%, rgba(7, 10, 16, 0.98) 100%)'
+              : 'linear-gradient(to bottom, rgba(7, 10, 16, 0.32) 0%, rgba(7, 10, 16, 0.48) 25%, rgba(7, 10, 16, 0.78) 60%, rgba(7, 10, 16, 0.96) 100%)',
+            pointerEvents: 'none'
+          }}
+        />
+      </div>
 
       {/* CELEBRATION UNLOCK TOAST */}
       {celebrationToast && (
@@ -372,299 +419,504 @@ const Profile = () => {
         </div>
       )}
 
-      {/* 1. PROFILE HEADER */}
-      <div className="glass-panel" style={{ padding: '28px', position: 'relative', overflow: 'hidden', borderRadius: 'var(--radius-lg)' }}>
-        <div style={{
-          position: 'absolute', top: 0, right: 0, width: '220px', height: '100%',
-          background: 'radial-gradient(circle at top right, rgba(59, 130, 246, 0.1), transparent 70%)',
-          pointerEvents: 'none'
-        }} />
+      {/* 2. MAIN CONTENT WRAPPER WITH PROPER NAVBAR CLEARANCE */}
+      <main
+        className="page-entrance"
+        style={{
+          position: 'relative',
+          zIndex: 10,
+          width: '100%',
+          maxWidth: '1240px',
+          margin: '0 auto',
+          padding: '108px 32px 80px 32px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '32px'
+        }}
+      >
+        {/* ================= 1. PROFILE HEADER ================= */}
+        <div
+          className="glass-panel page-stagger-header"
+          style={{
+            padding: '32px',
+            position: 'relative',
+            overflow: 'hidden',
+            borderRadius: '20px',
+            background: 'rgba(14, 20, 34, 0.78)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            boxShadow: '0 12px 32px rgba(0, 0, 0, 0.45)'
+          }}
+        >
+          {/* Subtle Ambient Radial Highlight */}
+          <div style={{
+            position: 'absolute',
+            top: '-20%',
+            right: '-10%',
+            width: '350px',
+            height: '350px',
+            background: 'radial-gradient(circle, rgba(14, 165, 233, 0.15), transparent 70%)',
+            pointerEvents: 'none'
+          }} />
 
-        <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '28px', alignItems: 'center', flexWrap: 'wrap', position: 'relative', zIndex: 1 }}>
 
-          {/* Avatar with subtle Ring Border & Initial Fallback */}
-          <div style={{ position: 'relative' }}>
-            {Boolean(avatarUrl && avatarUrl.trim()) ? (
-              <img
-                src={avatarUrl}
-                alt={`${firstName} ${lastName}`}
+            {/* Avatar with Vibrant Ring Border & Initial Fallback */}
+            <div style={{ position: 'relative', flexShrink: 0 }}>
+              {Boolean(avatarUrl && avatarUrl.trim()) ? (
+                <img
+                  src={avatarUrl}
+                  alt={`${firstName} ${lastName}`}
+                  style={{
+                    width: '110px',
+                    height: '110px',
+                    borderRadius: '50%',
+                    objectFit: 'cover',
+                    border: '3px solid #0ea5e9',
+                    boxShadow: '0 0 24px rgba(14, 165, 233, 0.45)'
+                  }}
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                    const fallback = e.target.nextSibling;
+                    if (fallback) fallback.style.display = 'flex';
+                  }}
+                />
+              ) : null}
+              <div
                 style={{
-                  width: '100px',
-                  height: '100px',
+                  width: '110px',
+                  height: '110px',
                   borderRadius: '50%',
-                  objectFit: 'cover',
-                  border: '2px solid var(--primary)',
-                  boxShadow: 'var(--shadow-md)'
+                  background: 'linear-gradient(135deg, #0ea5e9 0%, #7c3aed 100%)',
+                  border: '3px solid #0ea5e9',
+                  boxShadow: '0 0 24px rgba(14, 165, 233, 0.45)',
+                  display: Boolean(avatarUrl && avatarUrl.trim()) ? 'none' : 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '2.6rem',
+                  fontWeight: 900,
+                  color: '#ffffff',
+                  textTransform: 'uppercase'
                 }}
-                onError={(e) => {
-                  e.target.style.display = 'none';
-                  const fallback = e.target.nextSibling;
-                  if (fallback) fallback.style.display = 'flex';
-                }}
-              />
-            ) : null}
-            <div
-              style={{
-                width: '100px',
-                height: '100px',
-                borderRadius: '50%',
-                background: 'linear-gradient(135deg, #2563eb 0%, #7c3aed 100%)',
-                border: '2px solid var(--primary)',
-                boxShadow: 'var(--shadow-md)',
-                display: Boolean(avatarUrl && avatarUrl.trim()) ? 'none' : 'flex',
+              >
+                {firstName?.[0] || 'T'}
+              </div>
+            </div>
+
+            {/* User Details */}
+            <div style={{ flex: 1, minWidth: '280px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                  <h1 style={{
+                    fontFamily: 'var(--font-heading)',
+                    fontSize: 'clamp(1.8rem, 2.6vw, 2.4rem)',
+                    fontWeight: 900,
+                    margin: 0,
+                    color: '#ffffff',
+                    letterSpacing: '-0.025em',
+                    textShadow: '0 2px 10px rgba(0,0,0,0.5)'
+                  }}>
+                    {firstName} {lastName}
+                  </h1>
+
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      padding: '4px 10px',
+                      borderRadius: '9999px',
+                      background: 'rgba(45, 212, 191, 0.15)',
+                      color: '#2dd4bf',
+                      border: '1px solid rgba(45, 212, 191, 0.35)',
+                      letterSpacing: '0.03em'
+                    }}
+                  >
+                    <CheckCircle2 size={13} />
+                    <span>Verified Traveler</span>
+                  </span>
+                </div>
+
+                <button
+                  onClick={() => setIsEditModalOpen(true)}
+                  className="btn btn-secondary"
+                  style={{
+                    padding: '8px 18px',
+                    fontSize: '0.85rem',
+                    fontWeight: 600,
+                    borderRadius: '12px',
+                    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                    border: '1px solid rgba(255, 255, 255, 0.18)',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
+                  }}
+                >
+                  <Edit3 size={15} />
+                  <span>Edit Profile</span>
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', color: 'rgba(226, 232, 240, 0.75)', fontSize: '0.85rem', marginBottom: '14px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Mail size={14} style={{ color: '#38bdf8' }} />
+                  <span>{user?.email || email}</span>
+                </div>
+              </div>
+
+              <p style={{
+                color: 'rgba(226, 232, 240, 0.88)',
+                fontSize: '0.925rem',
+                lineHeight: 1.6,
+                margin: 0,
+                maxWidth: '720px',
+                fontStyle: 'italic'
+              }}>
+                "{bio}"
+              </p>
+            </div>
+
+          </div>
+        </div>
+
+        {/* ================= 2. TRAVEL MILESTONES SUMMARY ================= */}
+        <div
+          className="glass-panel page-stagger-header"
+          style={{
+            padding: '24px 32px',
+            borderRadius: '18px',
+            background: 'rgba(14, 20, 34, 0.78)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.35)'
+          }}
+        >
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '24px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <div style={{
+                width: '48px',
+                height: '48px',
+                borderRadius: '14px',
+                background: 'rgba(14, 165, 233, 0.16)',
+                border: '1px solid rgba(14, 165, 233, 0.35)',
+                display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontSize: '2.2rem',
-                fontWeight: 800,
-                color: '#ffffff',
-                textTransform: 'uppercase'
-              }}
-            >
-              {firstName?.[0] || 'T'}
-            </div>
-          </div>
-
-          {/* User Details */}
-          <div style={{ flex: 1, minWidth: '260px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px', flexWrap: 'wrap', gap: '12px' }}>
+                color: '#38bdf8',
+                boxShadow: '0 0 16px rgba(14, 165, 233, 0.25)'
+              }}>
+                <Globe size={24} />
+              </div>
               <div>
-                <h1 style={{ fontSize: '1.75rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
-                  {firstName} {lastName}
-                </h1>
-              </div>
-
-              <button
-                onClick={() => setIsEditModalOpen(true)}
-                className="btn btn-secondary"
-                style={{ padding: '7px 14px', fontSize: '0.825rem' }}
-              >
-                <Edit3 size={14} />
-                <span>Edit Profile</span>
-              </button>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', color: 'var(--text-secondary)', fontSize: '0.825rem', marginBottom: '12px', flexWrap: 'wrap' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <Mail size={13} style={{ color: 'var(--text-muted)' }} />
-                <span>{user?.email || email}</span>
+                <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#ffffff', lineHeight: 1.1 }}>
+                  {achievementsData.stats.countriesVisited}
+                </div>
+                <div style={{ fontSize: '0.825rem', color: 'rgba(226, 232, 240, 0.7)', fontWeight: 500 }}>
+                  Countries Visited
+                </div>
               </div>
             </div>
 
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', lineHeight: 1.55, margin: 0, maxWidth: '640px' }}>
-              "{bio}"
-            </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <div style={{
+                width: '48px',
+                height: '48px',
+                borderRadius: '14px',
+                background: 'rgba(16, 185, 129, 0.16)',
+                border: '1px solid rgba(16, 185, 129, 0.35)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#34d399',
+                boxShadow: '0 0 16px rgba(16, 185, 129, 0.25)'
+              }}>
+                <Compass size={24} />
+              </div>
+              <div>
+                <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#ffffff', lineHeight: 1.1 }}>
+                  {achievementsData.stats.tripsCompleted}
+                </div>
+                <div style={{ fontSize: '0.825rem', color: 'rgba(226, 232, 240, 0.7)', fontWeight: 500 }}>
+                  Trips Completed
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <div style={{
+                width: '48px',
+                height: '48px',
+                borderRadius: '14px',
+                background: 'rgba(245, 158, 11, 0.16)',
+                border: '1px solid rgba(245, 158, 11, 0.35)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#fbbf24',
+                boxShadow: '0 0 16px rgba(245, 158, 11, 0.25)'
+              }}>
+                <Award size={24} />
+              </div>
+              <div>
+                <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#ffffff', lineHeight: 1.1 }}>
+                  {achievementsData.stats.unlockedCount}
+                </div>
+                <div style={{ fontSize: '0.825rem', color: 'rgba(226, 232, 240, 0.7)', fontWeight: 500 }}>
+                  Achievements Unlocked
+                </div>
+              </div>
+            </div>
           </div>
-
         </div>
-      </div>
 
-      {/* 2. TRAVEL ACHIEVEMENTS */}
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '16px' }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <Award size={24} style={{ color: 'var(--accent-amber)' }} />
-              <h2 style={{ fontSize: '1.5rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
-                Travel Achievements
-              </h2>
+        {/* ================= 3. TRAVEL ACHIEVEMENTS ================= */}
+        <div className="page-stagger-section-1">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '22px', flexWrap: 'wrap', gap: '18px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <Award size={24} style={{ color: '#fbbf24' }} />
+                <h2 style={{
+                  fontFamily: 'var(--font-heading)',
+                  fontSize: '1.6rem',
+                  fontWeight: 900,
+                  margin: 0,
+                  color: '#ffffff',
+                  letterSpacing: '-0.02em'
+                }}>
+                  Travel Achievements
+                </h2>
+              </div>
+              <p style={{ fontSize: '0.875rem', color: 'rgba(226, 232, 240, 0.75)', margin: '4px 0 0 0' }}>
+                You've unlocked {achievementsData.stats.unlockedCount} badges based on verified travel activity.
+              </p>
             </div>
-            <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
-              You've unlocked {achievementsData.stats.unlockedCount} badges based on verified travel activity.
-            </p>
+
+            {/* Action & Filter Bar */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => setShowCheckInModal(true)}
+                className="btn btn-primary"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '9px 18px',
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  borderRadius: '12px',
+                  boxShadow: '0 4px 16px rgba(14, 165, 233, 0.45)'
+                }}
+              >
+                <Navigation size={16} />
+                <span>Verify Visit / Check In</span>
+              </button>
+
+              {/* Status Filter */}
+              <div
+                className="tab-group"
+                style={{
+                  padding: '4px',
+                  background: 'rgba(20, 26, 38, 0.72)',
+                  borderRadius: '9999px',
+                  border: '1px solid rgba(255, 255, 255, 0.12)'
+                }}
+              >
+                {['All', 'Unlocked', 'Locked'].map(st => (
+                  <button
+                    key={st}
+                    onClick={() => setStatusFilter(st)}
+                    className={`tab-item ${statusFilter === st ? 'active' : ''}`}
+                    style={{
+                      padding: '6px 16px',
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                      borderRadius: '9999px',
+                      color: statusFilter === st ? '#ffffff' : 'rgba(248, 250, 252, 0.7)',
+                      backgroundColor: statusFilter === st ? 'rgba(14, 165, 233, 0.85)' : 'transparent',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    {st}
+                  </button>
+                ))}
+              </div>
+
+              {/* Region Filter Custom Dropdown */}
+              <CustomDropdown
+                value={countryFilter}
+                onChange={setCountryFilter}
+                options={[
+                  { value: 'All', label: 'All Regions' },
+                  { value: 'India', label: 'India' },
+                  { value: 'United States', label: 'USA' },
+                  { value: 'Japan', label: 'Japan' },
+                  { value: 'France', label: 'France' },
+                  { value: 'Global', label: 'Global' }
+                ]}
+                icon={<Globe size={13} style={{ color: '#38bdf8' }} />}
+                pill={false}
+                minWidth="160px"
+                ariaLabel="Filter achievements by region"
+              />
+            </div>
           </div>
 
-          {/* Action & Filter Bar */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-            <button
-              onClick={() => setShowCheckInModal(true)}
-              className="btn btn-primary"
-              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', fontSize: '0.85rem', fontWeight: 700 }}
-            >
-              <Navigation size={16} />
-              <span>Verify Visit / Check In</span>
-            </button>
-
-            {/* Status Filter */}
-            <div className="tab-group" style={{ padding: '3px' }}>
-              {['All', 'Unlocked', 'Locked'].map(st => (
-                <button
-                  key={st}
-                  onClick={() => setStatusFilter(st)}
-                  className={`tab-item ${statusFilter === st ? 'active' : ''}`}
-                  style={{ padding: '6px 14px', fontSize: '0.8rem' }}
-                >
-                  {st}
-                </button>
+          {/* Achievement Cards Grid */}
+          {loading ? (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
+              {[1, 2, 3, 4].map(i => (
+                <div key={i} className="glass-panel" style={{ height: '180px', opacity: 0.5, borderRadius: '16px' }} />
               ))}
             </div>
-
-            {/* Country Filter (Includes France) */}
-            <select
-              className="form-select"
-              value={countryFilter}
-              onChange={(e) => setCountryFilter(e.target.value)}
-              style={{ height: '36px', padding: '0 12px', fontSize: '0.8rem', minWidth: '130px' }}
-            >
-              <option value="All">All Regions</option>
-              <option value="India">India</option>
-              <option value="United States">USA</option>
-              <option value="Japan">Japan</option>
-              <option value="France">France</option>
-              <option value="Global">Global</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Achievement Cards Grid */}
-        {loading ? (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
-            {[1, 2, 3, 4].map(i => (
-              <div key={i} className="glass-panel" style={{ height: '180px', opacity: 0.5 }} />
-            ))}
-          </div>
-        ) : displayedAchievements.length > 0 ? (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
-            {displayedAchievements.map(item => (
-              <AchievementCard
-                key={item.id}
-                achievement={item}
-                onClick={() => setSelectedAchievement(item)}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="glass-panel" style={{ padding: '36px', textAlign: 'center', color: 'var(--text-muted)' }}>
-            No achievements match the selected filter.
-          </div>
-        )}
-      </div>
-
-      {/* 3. COUNTRY PROGRESS */}
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-          <h3 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
-            Country Achievement Progress
-          </h3>
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-            Click any country to view passport details
-          </span>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '18px' }}>
-          {achievementsData.countryProgress.map(cp => (
-            <div
-              key={cp.country}
-              onClick={() => setSelectedCountryStat(cp)}
-              className="glass-panel-interactive"
-              style={{ padding: '20px', cursor: 'pointer', border: '1px solid var(--border-subtle)' }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span style={{ fontSize: '1.6rem' }}>{cp.flag}</span>
-                  <span style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)' }}>{cp.country}</span>
+          ) : displayedAchievements.length > 0 ? (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
+              {displayedAchievements.map((item, idx) => (
+                <div
+                  key={item.id}
+                  className="page-card-entrance"
+                  style={{ animationDelay: `${idx * 0.04}s` }}
+                >
+                  <AchievementCard
+                    achievement={item}
+                    onClick={() => setSelectedAchievement(item)}
+                  />
                 </div>
-                <span style={{ fontSize: '0.85rem', color: 'var(--accent-cyan)', fontWeight: 600 }}>
-                  {cp.unlockedCount} / {cp.totalCount}
-                </span>
-              </div>
-
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                {cp.unlockedCount} of {cp.totalCount} achievements unlocked ({cp.unlockedPercentage}%)
-              </div>
-
-              <div style={{ width: '100%', height: '6px', backgroundColor: 'rgba(255, 255, 255, 0.08)', borderRadius: '3px', overflow: 'hidden' }}>
-                <div style={{
-                  width: `${Math.max(4, cp.unlockedPercentage)}%`,
-                  height: '100%',
-                  background: 'linear-gradient(90deg, #3b82f6 0%, #10b981 100%)',
-                  borderRadius: '3px'
-                }} />
-              </div>
+              ))}
             </div>
-          ))}
+          ) : (
+            <div className="glass-panel" style={{ padding: '40px', textAlign: 'center', color: 'rgba(226, 232, 240, 0.65)', borderRadius: '16px' }}>
+              No achievements match the selected filter.
+            </div>
+          )}
         </div>
-      </div>
 
-      {/* 4. COMPACT TRAVEL MILESTONES */}
-      <div className="glass-panel" style={{ padding: '24px' }}>
-        <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '16px', color: 'var(--text-primary)' }}>
-          Travel Milestones
-        </h3>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: 'rgba(59, 130, 246, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)' }}>
-              <Globe size={20} />
+        {/* ================= 4. COUNTRY PROGRESS ================= */}
+        <div className="page-stagger-section-2">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px', flexWrap: 'wrap', gap: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Flag size={20} style={{ color: '#38bdf8' }} />
+              <h3 style={{
+                fontFamily: 'var(--font-heading)',
+                fontSize: '1.35rem',
+                fontWeight: 800,
+                margin: 0,
+                color: '#ffffff'
+              }}>
+                Country Achievement Progress
+              </h3>
             </div>
-            <div>
-              <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-                {achievementsData.stats.countriesVisited}
-              </div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Countries Visited</div>
-            </div>
+            <span style={{ fontSize: '0.825rem', color: 'rgba(226, 232, 240, 0.6)' }}>
+              Click any country to view passport details
+            </span>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: 'rgba(16, 185, 129, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-emerald)' }}>
-              <Compass size={20} />
-            </div>
-            <div>
-              <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-                {achievementsData.stats.tripsCompleted}
-              </div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Trips Completed</div>
-            </div>
-          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '20px' }}>
+            {achievementsData.countryProgress.map((cp, idx) => (
+              <div
+                key={cp.country}
+                onClick={() => setSelectedCountryStat(cp)}
+                className="glass-panel-interactive page-card-entrance"
+                style={{
+                  padding: '22px',
+                  cursor: 'pointer',
+                  borderRadius: '16px',
+                  background: 'rgba(14, 20, 34, 0.78)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  animationDelay: `${idx * 0.05}s`
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '1.75rem' }}>{cp.flag}</span>
+                    <span style={{ fontWeight: 700, fontSize: '1.05rem', color: '#ffffff' }}>{cp.country}</span>
+                  </div>
+                  <span style={{ fontSize: '0.85rem', color: '#38bdf8', fontWeight: 700 }}>
+                    {cp.unlockedCount} / {cp.totalCount}
+                  </span>
+                </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: 'rgba(245, 158, 11, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-amber)' }}>
-              <Award size={20} />
-            </div>
-            <div>
-              <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-                {achievementsData.stats.unlockedCount}
+                <div style={{ fontSize: '0.78rem', color: 'rgba(226, 232, 240, 0.7)', marginBottom: '10px' }}>
+                  {cp.unlockedCount} of {cp.totalCount} achievements unlocked ({cp.unlockedPercentage}%)
+                </div>
+
+                <div style={{ width: '100%', height: '7px', backgroundColor: 'rgba(255, 255, 255, 0.08)', borderRadius: '9999px', overflow: 'hidden' }}>
+                  <div style={{
+                    width: `${Math.max(4, cp.unlockedPercentage)}%`,
+                    height: '100%',
+                    background: 'linear-gradient(90deg, #0ea5e9 0%, #10b981 100%)',
+                    borderRadius: '9999px',
+                    boxShadow: '0 0 10px rgba(14, 165, 233, 0.5)'
+                  }} />
+                </div>
               </div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Achievements Unlocked</div>
-            </div>
+            ))}
           </div>
         </div>
-      </div>
 
-      {/* 5. DANGER ZONE */}
-      <div className="glass-panel" style={{ padding: '24px', borderColor: 'rgba(239, 68, 68, 0.2)' }}>
-        <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '8px', color: '#fca5a5' }}>
-          Account & Danger Zone
-        </h3>
-        <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '20px' }}>
-          Manage your session or permanently remove your Locora account.
-        </p>
+        {/* ================= 5. ACCOUNT & DANGER ZONE ================= */}
+        <div
+          className="glass-panel page-stagger-section-3"
+          style={{
+            padding: '28px 32px',
+            borderRadius: '18px',
+            background: 'rgba(14, 20, 34, 0.78)',
+            border: '1px solid rgba(239, 68, 68, 0.25)',
+            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.35)'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+            <Shield size={20} style={{ color: '#fca5a5' }} />
+            <h3 style={{ fontSize: '1.15rem', fontWeight: 800, margin: 0, color: '#fca5a5' }}>
+              Account & Danger Zone
+            </h3>
+          </div>
+          <p style={{ fontSize: '0.85rem', color: 'rgba(226, 232, 240, 0.7)', marginBottom: '22px' }}>
+            Manage your session or permanently remove your Locora account.
+          </p>
 
-        <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
-          <button
-            onClick={() => setShowLogoutConfirm(true)}
-            className="btn btn-secondary"
-            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px', fontSize: '0.85rem' }}
-          >
-            <LogOut size={16} />
-            <span>Log Out</span>
-          </button>
+          <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => setShowLogoutConfirm(true)}
+              className="btn btn-secondary"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 20px',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                borderRadius: '12px',
+                backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                border: '1px solid rgba(255, 255, 255, 0.16)'
+              }}
+            >
+              <LogOut size={16} />
+              <span>Log Out</span>
+            </button>
 
-          <button
-            onClick={() => {
-              setDeleteInput('');
-              setDeleteError('');
-              setShowDeleteConfirm(true);
-            }}
-            className="btn btn-danger"
-            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px', fontSize: '0.85rem' }}
-          >
-            <Trash2 size={16} />
-            <span>Delete Account</span>
-          </button>
+            <button
+              onClick={() => {
+                setDeleteInput('');
+                setDeleteError('');
+                setShowDeleteConfirm(true);
+              }}
+              className="btn btn-danger"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 20px',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                borderRadius: '12px'
+              }}
+            >
+              <Trash2 size={16} />
+              <span>Delete Account</span>
+            </button>
+          </div>
         </div>
-      </div>
+      </main>
 
-      {/* MODAL: EDIT PROFILE */}
+      {/* ================= MODAL: EDIT PROFILE ================= */}
       <Modal
         isOpen={isEditModalOpen}
         onClose={handleCloseEditModal}
@@ -700,48 +952,35 @@ const Profile = () => {
             </div>
           )}
 
-          {/* Avatar Edit with Upload / Change / Remove Triggers */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '18px', marginBottom: '22px' }}>
-            <div style={{ position: 'relative', width: '72px', height: '72px', flexShrink: 0 }}>
-              {Boolean(avatarPreview || (avatarUrl && avatarUrl.trim())) ? (
-                <img
-                  src={avatarPreview || avatarUrl}
-                  alt="Avatar Preview"
-                  style={{
-                    width: '72px',
-                    height: '72px',
-                    borderRadius: '50%',
-                    objectFit: 'cover',
-                    border: '2px solid var(--primary)',
-                    boxShadow: 'var(--shadow-sm)'
-                  }}
-                  onError={(e) => {
-                    e.target.style.display = 'none';
-                    const fallback = e.target.nextSibling;
-                    if (fallback) fallback.style.display = 'flex';
-                  }}
-                />
-              ) : null}
-              <div
+          {/* Avatar Edit with Upload Trigger */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
+            <div style={{ position: 'relative' }}>
+              <img
+                src={avatarPreview || avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80'}
+                alt="Avatar Preview"
+                style={{ width: '76px', height: '76px', borderRadius: '50%', objectFit: 'cover', border: '3px solid #0ea5e9' }}
+              />
+              <label
+                htmlFor="profile-photo-input"
                 style={{
-                  width: '72px',
-                  height: '72px',
+                  position: 'absolute',
+                  bottom: '-2px',
+                  right: '-2px',
+                  width: '30px',
+                  height: '30px',
                   borderRadius: '50%',
-                  background: 'linear-gradient(135deg, #2563eb 0%, #7c3aed 100%)',
-                  border: '2px solid var(--primary)',
-                  boxShadow: 'var(--shadow-sm)',
-                  display: Boolean(avatarPreview || (avatarUrl && avatarUrl.trim())) ? 'none' : 'flex',
+                  backgroundColor: '#0ea5e9',
+                  color: '#ffffff',
+                  display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontSize: '1.75rem',
-                  fontWeight: 800,
-                  color: '#ffffff',
-                  textTransform: 'uppercase'
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.5)'
                 }}
+                title="Upload Photo"
               >
-                {firstName?.[0] || 'T'}
-              </div>
-
+                <Camera size={15} />
+              </label>
               <input
                 id="profile-photo-input"
                 type="file"
@@ -751,91 +990,38 @@ const Profile = () => {
               />
             </div>
 
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-primary)', marginBottom: '4px' }}>
-                Profile Photo
-              </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '10px' }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#ffffff' }}>Profile Photo</div>
+              <div style={{ fontSize: '0.78rem', color: 'rgba(226, 232, 240, 0.65)', marginTop: '2px' }}>
                 Upload JPEG, PNG or WEBP (Max 5MB)
               </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                {Boolean(avatarPreview || (avatarUrl && avatarUrl.trim())) ? (
-                  <>
-                    <label
-                      htmlFor="profile-photo-input"
-                      className="btn btn-secondary"
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        padding: '6px 12px',
-                        fontSize: '0.775rem',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        margin: 0
-                      }}
-                    >
-                      <Camera size={13} />
-                      <span>Change Photo</span>
-                    </label>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (avatarUrl && avatarUrl.trim()) {
-                          setAvatarRemoveError('');
-                          setShowRemoveAvatarConfirm(true);
-                        } else if (avatarPreview) {
-                          URL.revokeObjectURL(avatarPreview);
-                          setAvatarPreview(null);
-                          setSelectedImageFile(null);
-                        }
-                      }}
-                      className="btn"
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        padding: '6px 12px',
-                        fontSize: '0.775rem',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        background: 'rgba(239, 68, 68, 0.12)',
-                        color: '#fca5a5',
-                        border: '1px solid rgba(239, 68, 68, 0.25)'
-                      }}
-                    >
-                      <Trash2 size={13} />
-                      <span>Remove Photo</span>
-                    </button>
-                  </>
-                ) : (
-                  <label
-                    htmlFor="profile-photo-input"
-                    className="btn btn-secondary"
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      padding: '6px 12px',
-                      fontSize: '0.775rem',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      margin: 0
-                    }}
-                  >
-                    <Camera size={13} />
-                    <span>Upload Photo</span>
-                  </label>
-                )}
-              </div>
+              {(avatarUrl || avatarPreview) && (
+                <button
+                  type="button"
+                  onClick={() => setShowRemoveAvatarConfirm(true)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#f87171',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    padding: 0,
+                    marginTop: '6px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <Trash2 size={12} /> Remove Picture
+                </button>
+              )}
             </div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
             <div className="form-group">
-              <label className="form-label">First Name</label>
+              <label className="form-label" style={{ color: 'rgba(226, 232, 240, 0.85)', fontSize: '0.8rem', fontWeight: 600 }}>First Name</label>
               <input
                 type="text"
                 className="form-input"
@@ -845,7 +1031,7 @@ const Profile = () => {
               />
             </div>
             <div className="form-group">
-              <label className="form-label">Last Name</label>
+              <label className="form-label" style={{ color: 'rgba(226, 232, 240, 0.85)', fontSize: '0.8rem', fontWeight: 600 }}>Last Name</label>
               <input
                 type="text"
                 className="form-input"
@@ -856,7 +1042,7 @@ const Profile = () => {
           </div>
 
           <div className="form-group" style={{ marginBottom: '14px' }}>
-            <label className="form-label">Email Address</label>
+            <label className="form-label" style={{ color: 'rgba(226, 232, 240, 0.85)', fontSize: '0.8rem', fontWeight: 600 }}>Email Address</label>
             <input
               type="email"
               className="form-input"
@@ -867,7 +1053,7 @@ const Profile = () => {
           </div>
 
           <div className="form-group" style={{ marginBottom: '16px' }}>
-            <label className="form-label">Bio</label>
+            <label className="form-label" style={{ color: 'rgba(226, 232, 240, 0.85)', fontSize: '0.8rem', fontWeight: 600 }}>Bio</label>
             <textarea
               rows={3}
               className="form-textarea"
@@ -877,8 +1063,8 @@ const Profile = () => {
             />
           </div>
 
-          <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '16px', marginBottom: '16px' }}>
-            <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)', marginBottom: '10px' }}>
+          <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.1)', paddingTop: '16px', marginBottom: '16px' }}>
+            <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#ffffff', marginBottom: '10px' }}>
               Change Password (Optional)
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
@@ -923,7 +1109,7 @@ const Profile = () => {
         </form>
       </Modal>
 
-      {/* MODAL: COUNTRY PASSPORT EXPLORER */}
+      {/* ================= MODAL: COUNTRY PASSPORT EXPLORER ================= */}
       {selectedCountryStat && (
         <CountryAchievementModal
           isOpen={Boolean(selectedCountryStat)}
@@ -937,7 +1123,7 @@ const Profile = () => {
         />
       )}
 
-      {/* MODAL: CHECK IN */}
+      {/* ================= MODAL: CHECK IN ================= */}
       <CheckInModal
         isOpen={showCheckInModal}
         onClose={() => setShowCheckInModal(false)}
@@ -945,7 +1131,7 @@ const Profile = () => {
         onCheckinSuccess={handleCheckinSuccess}
       />
 
-      {/* MODAL: ACHIEVEMENT DETAIL */}
+      {/* ================= MODAL: ACHIEVEMENT DETAIL ================= */}
       {selectedAchievement && (
         <Modal isOpen={Boolean(selectedAchievement)} onClose={() => setSelectedAchievement(null)} title={selectedAchievement.name}>
           <div style={{ textAlign: 'center', padding: '10px 0' }}>
@@ -976,7 +1162,7 @@ const Profile = () => {
         </Modal>
       )}
 
-      {/* LOG OUT CONFIRMATION MODAL */}
+      {/* ================= LOG OUT CONFIRMATION MODAL ================= */}
       <Modal isOpen={showLogoutConfirm} onClose={() => setShowLogoutConfirm(false)} title="Confirm Log Out" maxWidth="450px">
         <p style={{ color: 'var(--text-secondary)', marginBottom: '24px' }}>
           Are you sure you want to log out of Locora?
@@ -987,7 +1173,7 @@ const Profile = () => {
         </div>
       </Modal>
 
-      {/* DELETE ACCOUNT CONFIRMATION MODAL */}
+      {/* ================= DELETE ACCOUNT CONFIRMATION MODAL ================= */}
       <Modal isOpen={showDeleteConfirm} onClose={() => setShowDeleteConfirm(false)} title="DELETE ACCOUNT?" maxWidth="480px">
         <p style={{ color: '#fca5a5', marginBottom: '12px', fontWeight: 700 }}>
           This permanently removes your account and associated data. This action cannot be undone.
@@ -1016,33 +1202,28 @@ const Profile = () => {
         </div>
       </Modal>
 
-      {/* REMOVE PROFILE PICTURE CONFIRMATION MODAL */}
+      {/* ================= REMOVE AVATAR CONFIRMATION MODAL ================= */}
       <Modal
         isOpen={showRemoveAvatarConfirm}
-        onClose={() => {
-          if (!isRemovingAvatar) setShowRemoveAvatarConfirm(false);
-        }}
-        title="Remove profile picture?"
-        maxWidth="450px"
+        onClose={() => setShowRemoveAvatarConfirm(false)}
+        title="Remove Profile Picture"
+        maxWidth="440px"
       >
-        <p style={{ color: 'var(--text-secondary)', marginBottom: '24px', fontSize: '0.925rem', lineHeight: 1.5 }}>
-          Are you sure you want to remove your profile picture?
+        <p style={{ color: 'var(--text-secondary)', marginBottom: '16px', fontSize: '0.9rem' }}>
+          Are you sure you want to remove your profile picture? This will reset your avatar to the default traveler icon.
         </p>
-
         {avatarRemoveError && (
           <div style={{
-            padding: '10px 14px',
-            borderRadius: 'var(--radius-sm)',
-            marginBottom: '16px',
-            fontSize: '0.85rem',
-            backgroundColor: 'rgba(239,68,68,0.15)',
+            padding: '8px 12px',
+            background: 'rgba(239,68,68,0.15)',
             color: '#fca5a5',
-            border: '1px solid rgba(239,68,68,0.3)'
+            borderRadius: 'var(--radius-sm)',
+            fontSize: '0.85rem',
+            marginBottom: '14px'
           }}>
             {avatarRemoveError}
           </div>
         )}
-
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
           <button
             type="button"
@@ -1054,11 +1235,11 @@ const Profile = () => {
           </button>
           <button
             type="button"
-            onClick={handleConfirmRemoveAvatar}
+            onClick={handleRemoveAvatar}
             className="btn btn-danger"
             disabled={isRemovingAvatar}
           >
-            {isRemovingAvatar ? 'Removing...' : 'Remove'}
+            {isRemovingAvatar ? 'Removing...' : 'Remove Photo'}
           </button>
         </div>
       </Modal>

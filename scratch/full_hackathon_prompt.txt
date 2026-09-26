@@ -1,0 +1,920 @@
+<USER_REQUEST>
+# LOCORA — 24-HOUR HACKATHON IMPLEMENTATION
+
+## IMPORTANT MASTER INSTRUCTION
+
+You are working on the existing Locora project.
+
+Locora is already a functioning React/Vite web application with an existing backend/API layer, Supabase integration, Google Maps/Places integration, Gemini integration, itinerary management, Discover, Explore, Community, My Trips, Wishlist, Profile and related functionality.
+
+DO NOT rebuild Locora from scratch.
+
+DO NOT replace the existing architecture unnecessarily.
+
+DO NOT remove existing features that are already working.
+
+DO NOT create duplicate recommendation systems when an existing implementation can be extended.
+
+Before changing anything:
+
+1. Read the existing project structure.
+2. Read the relevant existing files.
+3. Understand how data currently flows from React → API → backend → external services → React.
+4. Identify existing functions that can be extended.
+5. Reuse existing components, API functions, Supabase data and recommendation logic wherever possible.
+6. Keep the existing UI style, dark theme, responsive behavior and Locora branding.
+7. Keep the application working after every step.
+8. Do not expose API keys in frontend code.
+9. Do not hardcode fake places, fake ratings, fake availability or fake recommendation data.
+10. Use real data whenever the existing application already has access to it.
+11. If a feature cannot be fully supported by available real data, represent the limitation honestly instead of inventing data.
+
+IMPLEMENT THESE STEPS IN ORDER.
+
+After completing each step:
+
+* run/build the project
+* check for compile/runtime errors
+* verify existing functionality still works
+* summarize files changed
+* explain what was implemented
+* do NOT continue to the next step automatically.
+
+---
+
+# STEP 1 — SMART CONTEXT ENGINE
+
+## Goal
+
+Upgrade Locora's existing recommendation context into a unified Smart Context object that represents the traveler's current situation.
+
+The Smart Context must support:
+
+* Current location
+* Available time
+* Budget
+* Interests
+* Group size
+* Traveler type
+* Accessibility requirements
+* Existing itinerary
+
+## Existing project areas to inspect first
+
+At minimum inspect:
+
+* `src/pages/Discover.jsx`
+* `src/services/api.js`
+* `api/ai/recommendations.js`
+* `server/services/gemini.js`
+* `server/index.js`
+* existing itinerary pages/components
+* existing Supabase queries related to trips and itinerary
+
+Do not assume these are the only relevant files.
+
+## Requirements
+
+Create a single normalized context structure.
+
+Example:
+
+```js
+{
+  location: {
+    latitude: 0,
+    longitude: 0,
+    city: "",
+    country: ""
+  },
+
+  time: {
+    availableMinutes: null,
+    availableWindows: []
+  },
+
+  budget: {
+    currency: "INR",
+    totalBudget: null,
+    remainingBudget: null
+  },
+
+  preferences: {
+    interests: [],
+    travelerType: null,
+    groupSize: null
+  },
+
+  accessibility: {
+    wheelchairAccessible: false,
+    stepFree: false,
+    childFriendly: false,
+    seniorFriendly: false
+  },
+
+  itinerary: {
+    activeTripId: null,
+    destination: null,
+    items: [],
+    occupiedWindows: [],
+    freeWindows: []
+  }
+}
+```
+
+Adapt this structure to the existing Locora data model instead of blindly copying it.
+
+## Important
+
+The Smart Context Engine should become the common source of truth for future recommendation features.
+
+Do not create separate unrelated state systems for each feature.
+
+The recommendation engine, free-time detection, conversational discovery and dynamic replanning must eventually consume this context.
+
+## UI
+
+Add or improve a compact "Trip Context" area in Discover.
+
+It should clearly show relevant information such as:
+
+* current location
+* available time
+* remaining budget
+* interests
+* traveler/group information
+
+Do not make the UI overcrowded.
+
+Allow the user to modify relevant values where appropriate.
+
+## Acceptance criteria
+
+The backend can receive one normalized Smart Context object.
+
+The Discover page can display the current context.
+
+Existing recommendations continue working.
+
+Existing itinerary functionality continues working.
+
+## No existing feature is removed.
+
+# STEP 2 — TIME-AWARE RECOMMENDATION ENGINE
+
+## Goal
+
+Make Locora recommend experiences that can realistically fit into the user's available time.
+
+This must be deterministic backend logic.
+
+Do NOT rely on Gemini to decide whether something fits.
+
+## Required calculation
+
+For every candidate experience calculate:
+
+```text
+totalRequiredTime =
+    travelToExperience
+  + experienceDuration
+  + returnTravel
+  + safetyBuffer
+```
+
+Then compare:
+
+```text
+totalRequiredTime <= availableTime
+```
+
+If true:
+
+```text
+fitsTime = true
+```
+
+Otherwise:
+
+```text
+fitsTime = false
+```
+
+## Use existing location/recommendation data
+
+Inspect the existing backend recommendation implementation before adding anything.
+
+Reuse existing distance calculations and candidate information.
+
+If actual travel-time information is available, use it.
+
+If only distance is available, do not pretend it is exact travel time. Clearly distinguish estimated travel time from verified travel time.
+
+## Required recommendation metadata
+
+Every candidate should eventually expose information similar to:
+
+```js
+{
+  travelTimeMinutes: 18,
+  experienceDurationMinutes: 90,
+  returnTravelMinutes: 18,
+  bufferMinutes: 15,
+  totalRequiredMinutes: 141,
+  availableMinutes: 180,
+  fitsTime: true,
+  remainingMinutes: 39
+}
+```
+
+Adapt the schema to the existing project.
+
+## Hard filtering
+
+Experiences that cannot fit the user's available window should not appear in the primary recommendations.
+
+Do not simply give them a lower score.
+
+The user specifically wants experiences that are realistically achievable.
+
+## UI
+
+Show a compact time breakdown on recommendation cards/details:
+
+```text
+18 min travel
+90 min experience
+18 min return
+15 min buffer
+
+Total: 141 min
+
+Available: 180 min
+
+✓ Fits with 39 min remaining
+```
+
+## Acceptance criteria
+
+If the user has 3 hours and an experience requires 2h20m:
+
+→ show it as fitting.
+
+If an experience requires 3h20m:
+
+→ exclude it from primary recommendations.
+
+## Existing recommendation functionality must continue working.
+
+# STEP 3 — LOCORA MATCH SCORE
+
+## Goal
+
+Create a transparent recommendation scoring system.
+
+The score must NOT be generated by Gemini.
+
+Gemini may later explain the score, but the actual score must be calculated by Locora's backend.
+
+## Score dimensions
+
+Use the Smart Context to calculate:
+
+1. Interest match
+2. Time fit
+3. Budget fit
+4. Distance
+5. Availability
+6. Rating/quality
+7. Itinerary compatibility
+
+Create a normalized score between:
+
+```text
+0–100
+```
+
+## Important
+
+Design the scoring system so weights are centralized and easy to modify.
+
+Example:
+
+```js
+const SCORE_WEIGHTS = {
+  interest: 0.25,
+  timeFit: 0.20,
+  budget: 0.15,
+  distance: 0.15,
+  availability: 0.10,
+  rating: 0.05,
+  itineraryCompatibility: 0.10
+};
+```
+
+These are starting values only. Inspect the existing recommendation logic and choose sensible weights that integrate with it.
+
+Do not create a second scoring system if the project already has one. Upgrade the existing one.
+
+## Hard constraints vs soft scoring
+
+Hard constraints:
+
+* Invalid destination
+* Too far
+* Cannot fit available time
+* Clearly unavailable
+* Cannot satisfy required accessibility
+* Other existing Locora rejection rules
+
+Soft scoring:
+
+* Interest match
+* Rating
+* Distance preference
+* Budget closeness
+* Preference match
+
+## Return score breakdown
+
+Every recommendation should contain enough information for the UI to explain its score.
+
+Example:
+
+```js
+{
+  matchScore: 94,
+  scoreBreakdown: {
+    interest: 92,
+    timeFit: 100,
+    budget: 95,
+    distance: 90,
+    availability: 100,
+    rating: 88,
+    itineraryCompatibility: 100
+  }
+}
+```
+
+Adapt to the existing data model.
+
+## UI
+
+Display:
+
+```text
+94% Match
+```
+
+Do not overdesign it.
+
+The user should be able to understand why the recommendation ranked highly.
+
+## Acceptance criteria
+
+Same context + same candidate data should produce a stable score.
+
+Gemini must not determine the numerical score.
+
+## Existing candidate validation/rejection logic must remain intact.
+
+# STEP 4 — "WHY LOCORA RECOMMENDED THIS"
+
+## Goal
+
+Make every recommendation explain itself using REAL recommendation data.
+
+Example:
+
+```text
+94% Match
+
+Why this fits you:
+
+✓ 18 min from your current location
+✓ Fits your 2h 30m free window
+✓ Estimated cost is within your ₹1,000 budget
+✓ Matches your Food + Culture interests
+✓ Available during your free time
+✓ Does not conflict with your itinerary
+```
+
+## Critical rule
+
+Do not allow Gemini to invent reasons.
+
+Reasons must be generated from actual backend fields.
+
+For example:
+
+If the backend says:
+
+```js
+fitsTime: true
+remainingMinutes: 34
+```
+
+the UI can say:
+
+```text
+✓ Fits your available time with 34 minutes remaining
+```
+
+If budget data is unavailable:
+
+DO NOT say:
+
+```text
+✓ Within your budget
+```
+
+Instead omit the claim or clearly label the estimate.
+
+## Architecture
+
+Create a reusable explanation structure.
+
+Example:
+
+```js
+whyRecommended: [
+  {
+    type: "time",
+    text: "Fits your available time with 34 minutes remaining"
+  },
+  {
+    type: "interest",
+    text: "Matches your interest in local food"
+  }
+]
+```
+
+## Gemini usage
+
+Gemini may optionally turn verified reasons into natural language.
+
+However, the verified reason list must remain the source of truth.
+
+The system must still work without Gemini.
+
+## UI
+
+Update ExperienceCard / relevant recommendation UI to show:
+
+* Match percentage
+* Why this fits
+* Time summary
+* Budget summary
+
+Keep the existing Locora visual design.
+
+## Acceptance criteria
+
+No explanation contains fabricated facts.
+
+## The explanation always corresponds to actual recommendation data.
+
+# STEP 5 — FREE-TIME DETECTION
+
+## Goal
+
+Make Locora automatically discover usable free windows from the user's existing itinerary.
+
+The user should not always have to manually enter:
+
+"I have 3 hours."
+
+## Input
+
+Use the user's existing itinerary items.
+
+Inspect the current itinerary data model and determine:
+
+* start time
+* end time
+* date
+* location
+* travel requirements where available
+
+## Example
+
+Existing itinerary:
+
+```text
+10:00–12:00
+Gateway of India
+
+12:00–13:00
+Lunch
+
+13:00–16:00
+FREE
+
+16:00–18:00
+Museum
+```
+
+Locora should derive:
+
+```text
+Free window:
+13:00–16:00
+
+Duration:
+180 minutes
+```
+
+## Multiple windows
+
+Support multiple free windows:
+
+```js
+[
+  {
+    start: "...",
+    end: "...",
+    durationMinutes: 180
+  },
+  {
+    start: "...",
+    end: "...",
+    durationMinutes: 90
+  }
+]
+```
+
+## Recommendation integration
+
+When Discover runs:
+
+1. Load active itinerary.
+2. Detect free windows.
+3. Determine which windows are usable.
+4. Pass them into the recommendation engine.
+5. Recommend experiences that fit the appropriate window.
+
+## UI
+
+Add:
+
+```text
+🗓️ You have 2h 45m free
+Today, 2:00 PM – 4:45 PM
+```
+
+Then:
+
+```text
+Make the most of your free time
+```
+
+with recommendations.
+
+## Important
+
+Do not destroy existing itinerary behavior.
+
+The feature should work with the current itinerary schema.
+
+## Acceptance criteria
+
+A user with an itinerary containing gaps automatically receives recommendations for those gaps.
+
+## If there are no usable free windows, clearly explain that instead of showing arbitrary recommendations.
+
+# STEP 6 — DYNAMIC REPLANNING
+
+## Goal
+
+Build Locora's adaptive recommendation system.
+
+If the user's situation changes, Locora should recalculate recommendations instead of continuing to show stale results.
+
+Support these triggers:
+
+1. Activity becomes unavailable
+2. Available time decreases
+3. Budget changes
+4. Existing itinerary changes
+5. A recommended experience no longer fits
+
+## Architecture
+
+Create a reusable replan flow:
+
+```text
+Current Plan
+     ↓
+Context Changed
+     ↓
+Recalculate Smart Context
+     ↓
+Recalculate Free Windows
+     ↓
+Fetch/validate candidates
+     ↓
+Apply hard constraints
+     ↓
+Calculate Match Scores
+     ↓
+Return alternatives
+```
+
+Do not simply ask Gemini for replacement places.
+
+## Example
+
+Original:
+
+```text
+Cooking Workshop
+4:00 PM
+90 minutes
+₹700
+```
+
+Then user changes available time:
+
+```text
+3 hours → 1 hour
+```
+
+Locora should detect:
+
+```text
+Original experience no longer fits
+```
+
+and find alternatives.
+
+## Alternative UI
+
+Show:
+
+```text
+⚠️ Your plan changed
+
+This activity no longer fits your available time.
+
+We found 3 alternatives:
+```
+
+Each alternative should include:
+
+* Match score
+* Distance
+* Time required
+* Cost
+* Why it fits
+
+Add:
+
+```text
+[Replace Activity]
+```
+
+## Replacement behavior
+
+When the user clicks Replace:
+
+1. Remove/replace the selected itinerary item safely.
+2. Preserve itinerary consistency.
+3. Update the active trip.
+4. Refresh Smart Context.
+5. Refresh recommendations.
+
+Do not create duplicate itinerary entries.
+
+## Acceptance criteria
+
+Changing time/budget/itinerary produces new recommendations.
+
+Old recommendations are not presented as valid if they no longer satisfy constraints.
+
+The user can replace an activity with an alternative.
+
+## Existing trips remain intact.
+
+# STEP 7 — CONVERSATIONAL DISCOVERY
+
+## Goal
+
+Add natural-language discovery using Gemini.
+
+This is the final feature and should be built only after the deterministic recommendation engine works.
+
+The conversational layer should NOT become a separate recommendation engine.
+
+It should convert natural language into structured Smart Context.
+
+## Example
+
+User:
+
+"I have 2 hours, ₹700, I'm with my girlfriend and want something local, preferably food or culture."
+
+Gemini should extract:
+
+```json
+{
+  "availableTimeMinutes": 120,
+  "budget": 700,
+  "travelerType": "couple",
+  "groupSize": 2,
+  "interests": [
+    "local food",
+    "culture"
+  ]
+}
+```
+
+Adapt the schema to the existing Smart Context.
+
+## Gemini instructions
+
+Gemini must:
+
+* extract constraints
+* identify preferences
+* identify missing information
+* normalize natural language
+* return structured JSON
+
+Gemini must NOT:
+
+* invent venues
+* invent prices
+* invent opening hours
+* decide final ranking
+* bypass Locora's validation system
+
+## Flow
+
+```text
+User natural language
+        ↓
+Gemini
+        ↓
+Structured Context
+        ↓
+Smart Context Engine
+        ↓
+Free-Time Engine
+        ↓
+Hard Filters
+        ↓
+Locora Match Score
+        ↓
+Recommendations
+        ↓
+Optional Gemini explanation
+```
+
+This ensures conversational discovery uses exactly the same recommendation engine as normal Discover.
+
+## Follow-up conversation
+
+Support changes such as:
+
+User:
+
+> "Actually I only have 1 hour."
+
+Do not necessarily call Gemini again if the intent is unambiguous.
+
+Update:
+
+```js
+availableTimeMinutes = 60
+```
+
+and rerun the deterministic recommendation engine.
+
+Similarly:
+
+> "Make it under ₹500."
+
+should update only the budget constraint.
+
+## UI
+
+Add a conversational input to Discover.
+
+Example:
+
+```text
+What are you in the mood for?
+
+"I have 2 hours and ₹700..."
+```
+
+Then show:
+
+```text
+I understood:
+
+⏱️ 2 hours
+💰 ₹700
+👥 Couple
+❤️ Food + Culture
+```
+
+Allow the user to correct extracted information before searching if necessary.
+
+## Acceptance criteria
+
+Natural language produces structured context.
+
+Structured context feeds the existing recommendation engine.
+
+The conversational system does not create a separate recommendation pipeline.
+
+## The user can refine constraints conversationally.
+
+# FINAL INTEGRATION REQUIREMENT
+
+After all seven steps are complete, Locora should have ONE unified recommendation architecture:
+
+```text
+                    USER
+                      │
+                      ▼
+              SMART CONTEXT
+                      │
+          ┌───────────┴───────────┐
+          │                       │
+    Existing Itinerary      User Input
+          │                       │
+          ▼                       ▼
+   FREE-TIME ENGINE       CONVERSATIONAL
+          │                 DISCOVERY
+          └───────────┬───────────┘
+                      ▼
+             CANDIDATE EXPERIENCES
+                      │
+                      ▼
+             HARD CONSTRAINTS
+                      │
+             ┌────────┴────────┐
+             │                 │
+          Time              Budget
+          Distance          Availability
+          Accessibility      Itinerary
+             │                 │
+             └────────┬────────┘
+                      ▼
+              LOCORA MATCH SCORE
+                      │
+                      ▼
+               TOP EXPERIENCES
+                      │
+          ┌───────────┴───────────┐
+          ▼                       ▼
+   WHY THIS FITS            USER SELECTION
+                                  │
+                                  ▼
+                           ITINERARY UPDATE
+                                  │
+                                  ▼
+                         CONTEXT CHANGES
+                                  │
+                                  ▼
+                         DYNAMIC REPLAN
+```
+
+## FINAL RULES
+
+Do not use Gemini for deterministic calculations.
+
+Do not fabricate unavailable information.
+
+Do not expose API keys.
+
+Do not break existing Locora features.
+
+Do not duplicate existing functions unnecessarily.
+
+Do not replace real Google/Supabase data with mock data.
+
+Do not create a second recommendation engine.
+
+Do not make conversational discovery bypass the Smart Context and Match Score systems.
+
+Every feature must remain responsive and consistent with the existing Locora dark UI.
+
+The final result should feel like one intelligent Locora system, not seven disconnected features.
+
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-09-26T21:02:54+05:30.
+
+The user's current state is as follows:
+Active Document: c:\Users\Pratik\OneDrive\Documents\Pratik\VsCode\locora\src\utils\formatters.js (LANGUAGE_JAVASCRIPT)
+Cursor is on line: 1
+Other open documents:
+- c:\Users\Pratik\OneDrive\Documents\Pratik\VsCode\locora\src\utils\formatters.js (LANGUAGE_JAVASCRIPT)
+- c:\Users\Pratik\OneDrive\Documents\Pratik\VsCode\locora\.env (LANGUAGE_UNSPECIFIED)
+- c:\Users\Pratik\OneDrive\Documents\Pratik\VsCode\locora\src\pages\CreateTrip.jsx (LANGUAGE_JAVASCRIPT)
+- c:\Users\Pratik\OneDrive\Documents\Pratik\VsCode\locora\src\services\api.js (LANGUAGE_JAVASCRIPT)
+- c:\Users\Pratik\OneDrive\Documents\Pratik\VsCode\locora\scratch\test_google_places.js (LANGUAGE_JAVASCRIPT)
+</ADDITIONAL_METADATA>

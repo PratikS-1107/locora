@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { generateGeminiResponse } from './services/gemini.js';
+import { processSmartRecommendations } from './services/recommendationEngine.js';
+import { extractTravelIntentWithNvidia, formatConversationalReplyWithNvidia } from './services/conversationalEngine.js';
 
 dotenv.config();
 
@@ -129,6 +131,143 @@ router.post('/places/reverse-geocode', async (req, res) => {
   }
 });
 
+// Server-side Geocoding Helper for any destination query (no client-side CORS issues)
+export const serverGeocodeDestination = async (queryText) => {
+  let query = (queryText || '').trim();
+  if (!query) return null;
+
+  // Clean common conversational preambles and suffixes before geocoding
+  query = query
+    .replace(/^[\s,.\-–—]+|[\s,.\-–—?!]+$/g, '')
+    .replace(/^(?:the\s+city\s+of|the\s+area\s+of|places\s+in|places\s+near|spots\s+in|things\s+to\s+do\s+in|explore|visit|around|near|in|to|at|destination|i\s*am\s*in|i'm\s*in|new\s*to)\s+/i, '')
+    .replace(/\s+(?:recommend\s+me|recommend|suggestions?|places|spots|activities|sights|things\s+to\s+do|please|today|now)$/i, '')
+    .trim();
+
+  if (!query) return null;
+
+  const googleApiKey = process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
+
+  // 1. Try Google Maps Geocoding API if key available
+  if (googleApiKey && googleApiKey !== 'YOUR_GOOGLE_API_KEY') {
+    try {
+      const geoUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(query)}&key=${googleApiKey}`;
+      const geoRes = await fetch(geoUrl);
+      if (geoRes.ok) {
+        const data = await geoRes.json();
+        if (data.status === 'OK' && Array.isArray(data.results) && data.results.length > 0) {
+          const result = data.results[0];
+          const lat = result.geometry?.location?.lat;
+          const lng = result.geometry?.location?.lng;
+          let city = '';
+          let state = '';
+          let country = '';
+          let countryCode = '';
+
+          const components = result.address_components || [];
+          for (const c of components) {
+            if (c.types.includes('locality') || c.types.includes('administrative_area_level_2')) {
+              city = c.long_name;
+            }
+            if (c.types.includes('administrative_area_level_1')) {
+              state = c.long_name;
+            }
+            if (c.types.includes('country')) {
+              country = c.long_name;
+              countryCode = c.short_name;
+            }
+          }
+
+          return {
+            success: true,
+            destination: city || query,
+            city: city || query,
+            state: state || '',
+            country: country || '',
+            country_code: countryCode || '',
+            latitude: Number(lat),
+            longitude: Number(lng),
+            formatted_address: result.formatted_address || query,
+            place_id: result.place_id || '',
+            source: 'Google Maps Geocoding'
+          };
+        }
+      }
+    } catch (gErr) {
+      console.warn('Google geocoding warning:', gErr);
+    }
+  }
+
+  // 2. Server-side OpenStreetMap / Nominatim geocoding (Safe from server, no browser CORS)
+  try {
+    const osmUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`;
+    const osmRes = await fetch(osmUrl, {
+      headers: { 'User-Agent': 'LocoraTravelApp/1.0 (contact@locora.app)' }
+    });
+    if (osmRes.ok) {
+      const osmData = await osmRes.json();
+      if (Array.isArray(osmData) && osmData.length > 0) {
+        const item = osmData[0];
+        const lat = parseFloat(item.lat);
+        const lng = parseFloat(item.lon);
+        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+          const parts = (item.display_name || '').split(',');
+          const mainCity = parts[0]?.trim() || query;
+          const countryName = parts[parts.length - 1]?.trim() || '';
+          return {
+            success: true,
+            destination: mainCity,
+            city: mainCity,
+            state: '',
+            country: countryName,
+            country_code: '',
+            latitude: lat,
+            longitude: lng,
+            formatted_address: item.display_name || query,
+            place_id: `osm_${item.osm_id || item.place_id || 'dest'}`,
+            source: 'OpenStreetMap Geocoding'
+          };
+        }
+      }
+    }
+  } catch (osmErr) {
+    console.warn('OSM server geocoding warning:', osmErr);
+  }
+  // 3. Photon geocoder (free, powered by OpenStreetMap, no API key needed)
+  try {
+    const photonUrl = `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=1`;
+    const photonRes = await fetch(photonUrl, {
+      headers: { 'User-Agent': 'LocoraTravelApp/1.0' }
+    });
+    if (photonRes.ok) {
+      const photonData = await photonRes.json();
+      const feature = photonData.features?.[0];
+      if (feature?.geometry?.coordinates) {
+        const [pLng, pLat] = feature.geometry.coordinates;
+        if (Number.isFinite(pLat) && Number.isFinite(pLng)) {
+          const props = feature.properties || {};
+          return {
+            success: true,
+            destination: props.name || query,
+            city: props.city || props.name || query,
+            state: props.state || '',
+            country: props.country || '',
+            country_code: props.countrycode || '',
+            latitude: pLat,
+            longitude: pLng,
+            formatted_address: [props.name, props.city, props.state, props.country].filter(Boolean).join(', '),
+            place_id: `photon_${props.osm_id || 'dest'}`,
+            source: 'Photon Geocoding'
+          };
+        }
+      }
+    }
+  } catch (photonErr) {
+    console.warn('Photon geocoding warning:', photonErr.message);
+  }
+
+  return null;
+};
+
 // POST /api/places/geocode - Server-side Geocoding for any destination query (no client-side CORS issues)
 router.post('/places/geocode', async (req, res) => {
   try {
@@ -137,92 +276,9 @@ router.post('/places/geocode', async (req, res) => {
       return res.status(400).json({ success: false, error: 'query is required' });
     }
 
-    const googleApiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY;
-
-    // 1. Try Google Maps Geocoding API if key available
-    if (googleApiKey && googleApiKey !== 'YOUR_GOOGLE_API_KEY') {
-      try {
-        const geoUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(query)}&key=${googleApiKey}`;
-        const geoRes = await fetch(geoUrl);
-        if (geoRes.ok) {
-          const data = await geoRes.json();
-          if (data.status === 'OK' && Array.isArray(data.results) && data.results.length > 0) {
-            const result = data.results[0];
-            const lat = result.geometry?.location?.lat;
-            const lng = result.geometry?.location?.lng;
-            let city = '';
-            let state = '';
-            let country = '';
-            let countryCode = '';
-
-            const components = result.address_components || [];
-            for (const c of components) {
-              if (c.types.includes('locality') || c.types.includes('administrative_area_level_2')) {
-                city = c.long_name;
-              }
-              if (c.types.includes('administrative_area_level_1')) {
-                state = c.long_name;
-              }
-              if (c.types.includes('country')) {
-                country = c.long_name;
-                countryCode = c.short_name;
-              }
-            }
-
-            return res.json({
-              success: true,
-              destination: city || query,
-              city: city || query,
-              state: state || '',
-              country: country || '',
-              country_code: countryCode || '',
-              latitude: Number(lat),
-              longitude: Number(lng),
-              formatted_address: result.formatted_address || query,
-              place_id: result.place_id || '',
-              source: 'Google Maps Geocoding'
-            });
-          }
-        }
-      } catch (gErr) {
-        console.warn('Google geocoding warning:', gErr);
-      }
-    }
-
-    // 2. Server-side OpenStreetMap / Nominatim geocoding (Safe from server, no browser CORS)
-    try {
-      const osmUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`;
-      const osmRes = await fetch(osmUrl, {
-        headers: { 'User-Agent': 'LocoraTravelApp/1.0 (contact@locora.app)' }
-      });
-      if (osmRes.ok) {
-        const osmData = await osmRes.json();
-        if (Array.isArray(osmData) && osmData.length > 0) {
-          const item = osmData[0];
-          const lat = parseFloat(item.lat);
-          const lng = parseFloat(item.lon);
-          if (Number.isFinite(lat) && Number.isFinite(lng)) {
-            const parts = (item.display_name || '').split(',');
-            const mainCity = parts[0]?.trim() || query;
-            const countryName = parts[parts.length - 1]?.trim() || '';
-            return res.json({
-              success: true,
-              destination: mainCity,
-              city: mainCity,
-              state: '',
-              country: countryName,
-              country_code: '',
-              latitude: lat,
-              longitude: lng,
-              formatted_address: item.display_name || query,
-              place_id: `osm_${item.osm_id || item.place_id || 'dest'}`,
-              source: 'OpenStreetMap Geocoding'
-            });
-          }
-        }
-      }
-    } catch (osmErr) {
-      console.warn('OSM server geocoding warning:', osmErr);
+    const geoResult = await serverGeocodeDestination(query);
+    if (geoResult) {
+      return res.json(geoResult);
     }
 
     return res.json({
@@ -967,18 +1023,25 @@ const formatRecommendation = (place, category, enrichment = {}, source = 'real_p
   source
 });
 
-// POST /api/ai/recommendations
-router.post('/ai/recommendations', async (req, res) => {
+// Central Recommendation Request Handler
+const handleRecommendationRequest = async (req, res) => {
   try {
-    const { location, availableTime, itinerary, budget, preferences, category } = req.body || {};
+    const body = req.body || {};
+    const loc = body.location || {};
+    const latitude = loc.latitude ?? body.latitude ?? body.lat;
+    const longitude = loc.longitude ?? body.longitude ?? body.lng;
+    const city = loc.city ?? body.city ?? body.destination ?? 'Current Location';
+    const country = loc.country ?? body.country ?? '';
+    const availableMinutes = Number.isFinite(Number(body.availableMinutes ?? body.availableTimeMinutes ?? body.availableTime?.durationMinutes))
+      ? Number(body.availableMinutes ?? body.availableTimeMinutes ?? body.availableTime?.durationMinutes)
+      : null;
+    const budget = Number.isFinite(Number(body.budget ?? body.remainingBudget ?? body.totalBudget))
+      ? Number(body.budget ?? body.remainingBudget ?? body.totalBudget)
+      : null;
+    const currency = body.currency || 'INR';
+    const category = (body.category || body.preferences?.[0] || body.intent || 'local').toLowerCase().trim();
 
-    const latitude = location?.latitude;
-    const longitude = location?.longitude;
-    const city = location?.city || 'Current Location';
-    const country = location?.country || '';
-    const intentKey = (category || preferences?.[0] || 'local').toLowerCase();
-
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    if (!Number.isFinite(Number(latitude)) || !Number.isFinite(Number(longitude))) {
       return res.status(400).json({
         success: false,
         error: 'Latitude and longitude coordinates are required for nearby recommendations.',
@@ -986,196 +1049,256 @@ router.post('/ai/recommendations', async (req, res) => {
       });
     }
 
+    const latNum = Number(latitude);
+    const lngNum = Number(longitude);
     const googleApiKey = process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
-    const realPlaces = await fetchMultiQueryPlaces(latitude, longitude, intentKey, googleApiKey);
 
-    const availableMins = availableTime?.durationMinutes || null;
+    // 1. Fetch factual real candidates using existing multi-query search & validation pipeline
+    const realPlaces = await fetchMultiQueryPlaces(latNum, lngNum, category, googleApiKey);
 
-    // Scenario A: Real candidate places found that pass relevance threshold (score >= 60)
-    if (realPlaces.length > 0) {
-      const candidatesForGemini = realPlaces.slice(0, 10).map(p => ({
-        placeId: p.placeId,
-        name: p.name,
-        address: p.address,
-        distanceLabel: p.distanceLabel,
-        rating: p.rating !== null ? `${p.rating} (${p.reviewCount} reviews)` : 'Rating unavailable',
-        score: p.relevanceScore,
-        types: p.types
-      }));
-
-      const prompt = `
-You are Locora's Smart & Flexible Travel Personalization & Ranking Engine.
-Analyze candidate real places for user GPS coordinates (${latitude}, ${longitude}) in ${city}, ${country}.
-
-SELECTED CATEGORY: "${intentKey}"
-
-GUIDELINES & SEMANTIC RELEVANCE:
-- Evaluate how genuinely useful each place is for a traveler selecting "${intentKey}".
-- Allow reasonable category overlaps (e.g. local food spots or historic markets under "local", traditional markets under "cultural").
-- Reject obvious non-sensical items (e.g. vehicle repair garages under "workshops", corporate hypermarkets under "nature").
-- Assign a relevanceScore between 0 and 100 for each candidate.
-
-CANDIDATES TO EVALUATE: ${JSON.stringify(candidatesForGemini)}
-
-STRICT RULES:
-1. Return ONLY exact placeIds from candidate list. DO NOT INVENT PLACES.
-2. Write factual, concise 1-2 sentence descriptions grounded strictly in real place features.
-
-JSON SCHEMA:
-{
-  "recommendations": [
-    {
-      "placeId": "exact_place_id",
-      "relevanceScore": 85,
-      "description": "Factual description grounded in place features.",
-      "whyItFits": "Factual explanation of fit for category",
-      "estimatedDurationMins": 60
-    }
-  ]
-}
-`;
-
-      const geminiCacheKey = getGeminiCacheKey(latitude, longitude, intentKey, realPlaces.slice(0, 10));
-      try {
-        const cachedGemini = geminiResultCache.get(geminiCacheKey);
-        const cooldownUntil = geminiCooldowns.get(geminiCacheKey) || 0;
-        const rawResult = cachedGemini && Date.now() - cachedGemini.timestamp < 5 * 60 * 1000
-          ? cachedGemini.value
-          : (Date.now() < cooldownUntil ? null : await generateGeminiResponse(prompt));
-
-        if (rawResult && !cachedGemini) {
-          geminiResultCache.set(geminiCacheKey, { timestamp: Date.now(), value: rawResult });
-        }
-        const parsed = parseGeminiJSON(rawResult);
-        const recList = extractList(parsed);
-
-        if (recList.length > 0) {
-          const placeMap = new Map(realPlaces.map(p => [p.placeId, p]));
-          const validRecommendations = [];
-
-          for (const item of recList) {
-            const itemScore = item.relevanceScore !== undefined ? item.relevanceScore : 75;
-            if (itemScore < 60) continue; // Filter out low relevance matches (<60)
-
-            const matchedPlace = placeMap.get(item.placeId);
-            if (matchedPlace) {
-              validRecommendations.push({
-                id: matchedPlace.placeId,
-                placeId: matchedPlace.placeId,
-                name: matchedPlace.name,
-                address: matchedPlace.address,
-                latitude: matchedPlace.latitude,
-                longitude: matchedPlace.longitude,
-                category: intentKey.charAt(0).toUpperCase() + intentKey.slice(1),
-                description: item.description || `${matchedPlace.address}${matchedPlace.rating ? ` — Rated ${matchedPlace.rating}★ on Google Places.` : ''}`,
-                location: {
-                  name: matchedPlace.address,
-                  distance_km: matchedPlace.distanceKm,
-                  lat: matchedPlace.latitude,
-                  lng: matchedPlace.longitude
-                },
-                distance: matchedPlace.distanceLabel,
-                rating: matchedPlace.rating,
-                reviewCount: matchedPlace.reviewCount,
-                openNow: matchedPlace.openNow,
-                priceLevel: matchedPlace.priceLevel,
-                priceDisplay: formatPriceDisplay(matchedPlace.priceLevel),
-                duration_minutes: item.estimatedDurationMins || 60,
-                durationMinutes: item.estimatedDurationMins || 60,
-                estimated_travel_minutes: Math.max(5, Math.round(matchedPlace.distanceKm * 8)),
-                travelMinutes: Math.max(5, Math.round(matchedPlace.distanceKm * 8)),
-                whyVisit: item.whyItFits || `Verified ${intentKey} destination (${matchedPlace.distanceLabel})`,
-                why_it_fits: item.whyItFits || `Authentic ${intentKey} spot (${matchedPlace.distanceLabel})`,
-                image: matchedPlace.photoUrl,
-                googleMapsUrl: matchedPlace.googleMapsUrl,
-                relevanceScore: matchedPlace.relevanceScore,
-                source: 'real_places_ai_ranked'
-              });
-            }
-          }
-
-          if (validRecommendations.length > 0) {
-            // Sort by relevance score descending
-            validRecommendations.sort((a, b) => b.relevanceScore - a.relevanceScore);
-            console.log(`[DISCOVER] Final AI-ranked recommendations returned: ${validRecommendations.length}`);
-            return res.json({
-              success: true,
-              source: 'real_places_ai_ranked',
-              recommendations: validRecommendations
-            });
-          }
-        }
-      } catch (geminiError) {
-        if (geminiError?.message?.includes('HTTP 429')) {
-          geminiCooldowns.set(geminiCacheKey, Date.now() + 5 * 60 * 1000);
-        }
-        console.warn('[DISCOVER WARNING] Gemini API call warning (falling back to deterministic relevance score engine):', geminiError.message);
-      }
-
-      // DETERMINISTIC RELEVANCE FALLBACK (Used when Gemini is rate-limited or fails)
-      const formattedRecs = realPlaces
-        .filter(p => p.relevanceScore >= 55)
-        .sort((a, b) => b.relevanceScore - a.relevanceScore)
-        .slice(0, 10)
-        .map(p => ({
-          id: p.placeId,
-          placeId: p.placeId,
-          name: p.name,
-          address: p.address,
-          latitude: p.latitude,
-          longitude: p.longitude,
-          category: intentKey.charAt(0).toUpperCase() + intentKey.slice(1),
-          description: `${p.address}${p.rating !== null ? ` — Rated ${p.rating}★ (${p.reviewCount} reviews).` : ''}`,
-          location: {
-            name: p.address,
-            distance_km: p.distanceKm,
-            lat: p.latitude,
-            lng: p.longitude
-          },
-          distance: p.distanceLabel,
-          rating: p.rating,
-          reviewCount: p.reviewCount,
-          openNow: p.openNow,
-          priceLevel: p.priceLevel,
-          priceDisplay: formatPriceDisplay(p.priceLevel),
-          duration_minutes: 60,
-          durationMinutes: 60,
-          estimated_travel_minutes: Math.max(5, Math.round(p.distanceKm * 8)),
-          travelMinutes: Math.max(5, Math.round(p.distanceKm * 8)),
-          whyVisit: `Verified ${intentKey} destination (${p.distanceLabel})`,
-          why_it_fits: `Authentic ${intentKey} experience (${p.distanceLabel})`,
-          image: p.photoUrl,
-          googleMapsUrl: p.googleMapsUrl,
-          relevanceScore: p.relevanceScore,
-          source: 'real_places_deterministic'
-        }));
-
-      console.log(`[DISCOVER] Final deterministic relevance recommendations returned: ${formattedRecs.length}`);
+    if (realPlaces.length === 0) {
       return res.json({
         success: true,
-        source: 'real_places_deterministic',
-        recommendations: formattedRecs
+        source: 'no_places_found',
+        count: 0,
+        recommendations: [],
+        message: `No authentic experiences found matching '${category}' near your coordinates.`
       });
     }
 
-    // Scenario B: Zero places pass relevance threshold (score >= 60)
-    console.log(`[DISCOVER] Zero authentic places found for category '${intentKey}' near (${latitude}, ${longitude}).`);
-    return res.json({
-      success: true,
-      source: 'no_places_found',
-      recommendations: [],
-      message: `No authentic experiences found matching '${intentKey}' near your coordinates.`
+    // 2. Pass real candidate places through constraint filters & Gemini Recommendation AI reasoning
+    const recommendationResult = await processSmartRecommendations({
+      candidates: realPlaces,
+      latitude: latNum,
+      longitude: lngNum,
+      city,
+      country,
+      category,
+      availableMinutes,
+      budget,
+      currency
     });
 
+    return res.json(recommendationResult);
   } catch (error) {
-    console.error('[DISCOVER ERROR] Server error handling recommendation request:', error);
+    console.error('[RECOMMENDATIONS ERROR] Error handling recommendation request:', error);
     return res.status(500).json({
       success: false,
       error: 'Unable to load recommendations for your location right now.',
       recommendations: []
     });
   }
-});
+};
+
+// POST /api/recommendations (Standard endpoint)
+router.post('/recommendations', handleRecommendationRequest);
+router.post('/api/recommendations', handleRecommendationRequest);
+
+// POST /api/ai/recommendations (Backwards-compatible endpoint)
+router.post('/ai/recommendations', handleRecommendationRequest);
+router.post('/api/ai/recommendations', handleRecommendationRequest);
+
+app.post('/api/recommendations', handleRecommendationRequest);
+app.post('/api/ai/recommendations', handleRecommendationRequest);
+app.post('/recommendations', handleRecommendationRequest);
+app.post('/ai/recommendations', handleRecommendationRequest);
+
+// ============================================================================
+// CONVERSATIONAL DISCOVERY PIPELINE (Powered by NVIDIA & Recommendation Engine)
+// ============================================================================
+
+const handleConversationalDiscoveryRequest = async (req, res) => {
+  try {
+    const {
+      message,
+      history = [],
+      location = {},
+      activeTrip = null,
+      conversationState = null,
+      currentState = null
+    } = req.body || {};
+
+    if (!message || typeof message !== 'string' || !message.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Message text is required.',
+        reply: 'Please ask a travel or recommendation question.',
+        recommendations: [],
+        conversationState: conversationState || currentState || null
+      });
+    }
+
+    const stateToPass = conversationState || currentState || {};
+
+    // 1. Domain Guardrail, State Tracking & Intent Extraction via NVIDIA (CONVERSATIONAL pool)
+    const intentResult = await extractTravelIntentWithNvidia({
+      message,
+      history,
+      currentState: stateToPass,
+      clientContext: {
+        location,
+        destination: activeTrip?.destination || location?.city || null
+      }
+    });
+
+    // If classified as non-travel or off-topic, strictly refuse with mandatory message
+    if (!intentResult.isTravel) {
+      return res.json({
+        success: true,
+        isRefusal: true,
+        reply: intentResult.refusalMessage || 'I can only help you discover places and activities.',
+        recommendations: [],
+        extractedIntent: null,
+        conversationState: intentResult.updatedState || stateToPass
+      });
+    }
+
+    const updatedState = intentResult.updatedState || {};
+
+    // If essential information is missing and assistant asked a concise travel question:
+    if (intentResult.action === 'ask_clarification' && intentResult.followUpQuestion) {
+      return res.json({
+        success: true,
+        isRefusal: false,
+        reply: intentResult.followUpQuestion,
+        recommendations: [],
+        extractedIntent: intentResult,
+        conversationState: updatedState
+      });
+    }
+
+    // 2. Resolve Coordinates for Location Context
+    let lat = Number(location?.latitude ?? location?.lat);
+    let lng = Number(location?.longitude ?? location?.lng);
+    let city = location?.city || updatedState.destination || updatedState.location?.city || 'Current Location';
+    let country = location?.country || updatedState.location?.country || '';
+
+    // If destination is explicitly present in updatedState, geocode it
+    const targetDestination = updatedState.destination || intentResult.destination;
+    if (targetDestination) {
+      const geo = await serverGeocodeDestination(targetDestination);
+      if (geo && Number.isFinite(geo.latitude) && Number.isFinite(geo.longitude)) {
+        lat = geo.latitude;
+        lng = geo.longitude;
+        city = geo.city || targetDestination;
+        country = geo.country || country;
+        updatedState.location = { latitude: lat, longitude: lng, city, country };
+      }
+    }
+
+    // If no coordinates available, geocode default or active trip destination
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      if (activeTrip?.destination) {
+        const geo = await serverGeocodeDestination(activeTrip.destination);
+        if (geo && Number.isFinite(geo.latitude) && Number.isFinite(geo.longitude)) {
+          lat = geo.latitude;
+          lng = geo.longitude;
+          city = geo.city || activeTrip.destination;
+          country = geo.country || country;
+          updatedState.location = { latitude: lat, longitude: lng, city, country };
+        }
+      }
+    }
+
+    // If still no coordinates but destination is known, try Google Places Text Search as fallback geocoder
+    if ((!Number.isFinite(lat) || !Number.isFinite(lng)) && targetDestination) {
+      const googleApiKey = process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
+      if (googleApiKey) {
+        try {
+          const tsUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(targetDestination)}&key=${googleApiKey}`;
+          const tsRes = await fetch(tsUrl);
+          if (tsRes.ok) {
+            const tsData = await tsRes.json();
+            if (tsData.status === 'OK' && tsData.results?.length > 0) {
+              const r = tsData.results[0];
+              lat = r.geometry?.location?.lat;
+              lng = r.geometry?.location?.lng;
+              city = targetDestination;
+              updatedState.location = { latitude: lat, longitude: lng, city, country };
+              console.log(`[CONVERSATIONAL] Places Text Search geocoded "${targetDestination}" → (${lat}, ${lng})`);
+            }
+          }
+        } catch (tsErr) {
+          console.warn('[CONVERSATIONAL] Places Text Search fallback failed:', tsErr.message);
+        }
+      }
+    }
+
+    // If still no coordinates and no destination known, ask for destination
+    // If destination IS known but geocoding failed, give specific error (don't re-ask same question = infinite loop)
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      const reply = targetDestination
+        ? `I couldn't locate "${targetDestination}" right now. Could you try a more specific name or nearby landmark?`
+        : `Which city or area would you like to explore?`;
+      return res.json({
+        success: true,
+        isRefusal: false,
+        reply,
+        recommendations: [],
+        extractedIntent: intentResult,
+        conversationState: updatedState
+      });
+    }
+
+
+    const googleApiKey = process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
+    const category = updatedState.category || intentResult.category || 'local';
+
+    // 3. Fetch real factual candidate places using the existing multi-query search
+    const realPlaces = await fetchMultiQueryPlaces(lat, lng, category, googleApiKey);
+
+    // 4. Pass candidates through constraints filter & recommendation reasoning
+    const recommendationResult = await processSmartRecommendations({
+      candidates: realPlaces,
+      latitude: lat,
+      longitude: lng,
+      city,
+      country,
+      category,
+      availableMinutes: updatedState.availableMinutes,
+      budget: updatedState.budget,
+      currency: updatedState.currency || 'INR'
+    });
+
+    const finalRecommendations = recommendationResult.recommendations || [];
+
+    // 5. Synthesize conversational response via NVIDIA with strictly verified factual places
+    const conversationalReply = await formatConversationalReplyWithNvidia({
+      userMessage: message,
+      extractedIntent: {
+        ...intentResult,
+        availableMinutes: updatedState.availableMinutes,
+        budget: updatedState.budget,
+        category: updatedState.category || category
+      },
+      recommendations: finalRecommendations,
+      history
+    });
+
+    return res.json({
+      success: true,
+      isRefusal: false,
+      reply: conversationalReply,
+      recommendations: finalRecommendations,
+      extractedIntent: intentResult,
+      conversationState: updatedState
+    });
+  } catch (err) {
+    console.error('[CONVERSATIONAL DISCOVERY ERROR]', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Unable to process conversational discovery request right now.',
+      reply: 'Sorry, I encountered an issue checking places right now. Please try asking again.',
+      recommendations: []
+    });
+  }
+};
+
+// POST /api/chat/discovery (Conversational Discovery endpoint)
+router.post('/chat/discovery', handleConversationalDiscoveryRequest);
+router.post('/api/chat/discovery', handleConversationalDiscoveryRequest);
+app.post('/api/chat/discovery', handleConversationalDiscoveryRequest);
+app.post('/chat/discovery', handleConversationalDiscoveryRequest);
 
 // ============================================================================
 // EXPLORE EXPERIENCES SEARCH PIPELINE (Verified Physical Places & Destinations)
@@ -1475,20 +1598,8 @@ if (!process.env.VERCEL) {
 
   server.on('error', async (err) => {
     if (err.code === 'EADDRINUSE') {
-      try {
-        const checkRes = await fetch(`http://localhost:${PORT}/api/health`);
-        if (checkRes.ok) {
-          const data = await checkRes.json();
-          if (data && data.server === 'Locora Backend Express API') {
-            console.log(`[SERVER INFO] Locora Backend is already running on http://localhost:${PORT}. Reusing active backend instance.`);
-            setInterval(() => { }, 3600000);
-            return;
-          }
-        }
-      } catch (_) { }
-
       console.error(`[SERVER ERROR] Port ${PORT} is already in use by another process.`);
-      console.error(`[SERVER ERROR] Please stop the process running on port ${PORT} to start a new server instance.`);
+      console.error(`[SERVER ERROR] Please restart the dev process to run the latest backend code.`);
       process.exit(1);
     } else {
       console.error('[SERVER ERROR]', err);

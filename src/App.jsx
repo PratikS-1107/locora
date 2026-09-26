@@ -7,6 +7,7 @@ import { SidebarProvider, useSidebar } from './context/SidebarContext';
 import Navbar from './components/Navbar';
 import Sidebar from './components/Sidebar';
 import SettingsModal from './components/SettingsModal';
+import ConversationalDiscoveryModal from './components/ConversationalDiscoveryModal';
 import Logo from './components/Logo';
 
 // Pages
@@ -15,6 +16,7 @@ import Login from './pages/Login';
 import Signup from './pages/Signup';
 import MyTrips from './pages/MyTrips';
 import Discover from './pages/Discover';
+import ConversationalDiscoveryPage from './pages/ConversationalDiscoveryPage';
 import Explore from './pages/Explore';
 import Community from './pages/Community';
 import Profile from './pages/Profile';
@@ -56,14 +58,30 @@ const ProtectedRoute = ({ children }) => {
   return children;
 };
 
-// Dynamic Layout Wrapper (Top Navbar for Home, Full-Screen Split for Auth, Collapsible Left Sidebar for Inner Pages)
+// Dynamic Layout Wrapper (Top Navbar for Home, Explore & My Trips, Full-Screen Split for Auth, Collapsible Left Sidebar for Inner Pages)
 const AppLayout = () => {
   const location = useLocation();
   const { isCollapsed } = useSidebar();
-  const isHomePage = location.pathname === '/';
+  const isTopNavPage =
+    location.pathname === '/' ||
+    location.pathname === '/home' ||
+    location.pathname === '/explore' ||
+    location.pathname === '/my-trips' ||
+    location.pathname === '/trips' ||
+    location.pathname === '/discover' ||
+    location.pathname === '/community' ||
+    location.pathname === '/profile' ||
+    location.pathname === '/chat' ||
+    location.pathname === '/assistant' ||
+    location.pathname.startsWith('/trip') ||
+    location.pathname.startsWith('/trips') ||
+    location.pathname.startsWith('/itinerary-view') ||
+    location.pathname.startsWith('/itinerary-builder') ||
+    location.pathname.startsWith('/create-trip') ||
+    location.pathname.startsWith('/edit-trip');
   const isAuthPage = location.pathname === '/login' || location.pathname === '/signup';
 
-  const layoutClass = isHomePage
+  const layoutClass = isTopNavPage
     ? 'home-layout'
     : isAuthPage
     ? 'auth-layout'
@@ -71,10 +89,10 @@ const AppLayout = () => {
 
   return (
     <div className={`app-container ${layoutClass}`}>
-      {isHomePage ? <Navbar /> : (isAuthPage ? null : <Sidebar />)}
+      {isTopNavPage ? <Navbar /> : (isAuthPage ? null : <Sidebar />)}
       
-      <main className="main-content">
-        <Routes>
+      <main className="main-content app-page-entrance" key={location.pathname}>
+        <Routes location={location} key={location.pathname}>
           {/* Public Discovery Routes */}
           <Route path="/" element={<Home />} />
           <Route path="/home" element={<Home />} />
@@ -106,6 +124,22 @@ const AppLayout = () => {
             element={
               <ProtectedRoute>
                 <Discover />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/chat"
+            element={
+              <ProtectedRoute>
+                <ConversationalDiscoveryPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/assistant"
+            element={
+              <ProtectedRoute>
+                <ConversationalDiscoveryPage />
               </ProtectedRoute>
             }
           />
@@ -195,6 +229,9 @@ const AppLayout = () => {
 
       {/* Global Settings Modal Popup */}
       <SettingsModal />
+
+      {/* Floating Conversational Discovery Messaging Assistant */}
+      <ConversationalDiscoveryModal />
     </div>
   );
 };

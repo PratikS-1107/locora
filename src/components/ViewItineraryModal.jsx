@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Modal from './Modal';
 import { getTripItinerary } from '../services/api';
-import { Clock, MapPin, Calendar, Plus, Sparkles, X, Compass, Coins } from 'lucide-react';
+import { Clock, MapPin, Calendar, Plus, Sparkles, X, Compass, Coins, Check, Heart } from 'lucide-react';
 
 const ViewItineraryModal = ({
   isOpen,
@@ -170,11 +170,23 @@ const ViewItineraryModal = ({
                     padding: '8px 16px',
                     fontSize: '0.85rem',
                     borderColor: isInWishlist ? 'var(--accent-purple)' : 'var(--border-subtle)',
-                    color: isInWishlist ? 'var(--accent-purple)' : 'var(--text-primary)'
+                    color: isInWishlist ? 'var(--accent-purple)' : 'var(--text-primary)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px'
                   }}
                 >
-                  <Sparkles size={14} style={{ color: isInWishlist ? 'var(--accent-purple)' : 'inherit' }} />
-                  <span>{isInWishlist ? '✓ In Wishlist' : '+ Add to Wishlist'}</span>
+                  {isInWishlist ? (
+                    <>
+                      <Check size={14} style={{ color: 'var(--accent-purple)' }} />
+                      <span>In Wishlist</span>
+                    </>
+                  ) : (
+                    <>
+                      <Heart size={14} />
+                      <span>Add to Wishlist</span>
+                    </>
+                  )}
                 </button>
               )}
 

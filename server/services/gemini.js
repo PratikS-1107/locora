@@ -1,63 +1,81 @@
 import dotenv from 'dotenv';
+import { executeWithKeyPool } from './keyManager.js';
+
 dotenv.config();
 
 /**
- * Gemini API Service (Server-side execution only)
- * Resilient multi-model fallback to ensure high availability against 503 spikes.
+ * Gemini AI Service with Automated Key Rotation & Multi-Model Fallback
+ * 
+ * Supports isolated pools:
+ *   - 'DISCOVER' (GEMINI_DISCOVER_KEY_1 / GEMINI_DISCOVER_KEY_2)
+ *   - 'RECOMMENDATION' (GEMINI_RECOMMENDATION_KEY_1 / GEMINI_RECOMMENDATION_KEY_2)
+ * 
+ * Fallback Models:
+ *   - gemini-1.5-flash
+ *   - gemini-2.0-flash
+ *   - gemini-1.5-pro
+ *   - gemini-flash-latest
  */
-export const generateGeminiResponse = async (prompt) => {
-  const apiKey = process.env.GEMINI_API_KEY;
-
-  if (!apiKey || apiKey === 'YOUR_NEW_GEMINI_API_KEY' || apiKey.includes('YOUR_')) {
-    throw new Error('GEMINI_API_KEY environment variable is missing or unconfigured on server.');
-  }
-
-  const models = [
-    'gemini-1.5-flash',
-    'gemini-2.0-flash',
-    'gemini-1.5-pro',
+export const generateGeminiResponse = async (prompt, options = {}) => {
+  const pool = (typeof options === 'string' ? options : options?.pool || 'DISCOVER').toUpperCase();
+  const models = options?.models || [
     'gemini-flash-latest'
   ];
 
-  let lastError = null;
+  return await executeWithKeyPool(pool, async (apiKey, keyIndex) => {
+    let lastError = null;
 
-  for (const model of models) {
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+    for (const model of models) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-goog-api-key': apiKey
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                {
-                  text: prompt
-                }
-              ]
-            }
-          ]
-        })
-      });
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-goog-api-key': apiKey
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  {
+                    text: prompt
+                  }
+                ]
+              }
+            ]
+          })
+        });
 
-      if (response.ok) {
-        const data = await response.json();
-        const generatedText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (generatedText) {
-          return generatedText;
+        if (response.ok) {
+          const data = await response.json();
+          const generatedText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (generatedText) {
+            return generatedText;
+          }
+        } else {
+          const errText = await response.text();
+          const err = new Error(`Gemini API (${model}) HTTP ${response.status}: ${errText}`);
+          err.status = response.status;
+          err.statusCode = response.status;
+
+          // If rate limited or quota exceeded on this model, throw immediately so keyManager can switch keys
+          if (response.status === 429 || response.status === 503 || errText.includes('RESOURCE_EXHAUSTED') || errText.includes('quota')) {
+            throw err;
+          }
+
+          lastError = err;
         }
-      } else {
-        const errText = await response.text();
-        lastError = new Error(`Gemini API (${model}) HTTP ${response.status}: ${errText}`);
+      } catch (fetchErr) {
+        // If it's already a rate limit error, propagate it directly for key failover
+        if (fetchErr.status === 429 || fetchErr.statusCode === 429 || fetchErr.message?.includes('RESOURCE_EXHAUSTED') || fetchErr.message?.includes('429')) {
+          throw fetchErr;
+        }
+        lastError = fetchErr;
       }
-    } catch (err) {
-      lastError = err;
     }
-  }
 
-  throw lastError || new Error('All Gemini model endpoints failed.');
+    throw lastError || new Error(`All Gemini models failed for ${pool} pool.`);
+  });
 };

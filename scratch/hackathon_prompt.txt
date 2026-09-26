@@ -1,0 +1,104 @@
+<USER_REQUEST>
+# LOCORA — 24-HOUR HACKATHON IMPLEMENTATION
+
+## IMPORTANT MASTER INSTRUCTION
+
+You are working on the existing Locora project.
+
+Locora is already a functioning React/Vite web application with an existing backend/API layer, Supabase integration, Google Maps/Places integration, Gemini integration, itinerary management, Discover, Explore, Community, My Trips, Wishlist, Profile and related functionality.
+
+DO NOT rebuild Locora from scratch.
+
+DO NOT replace the existing architecture unnecessarily.
+
+DO NOT remove existing features that are already working.
+
+DO NOT create duplicate recommendation systems when an existing implementation can be extended.
+
+Before changing anything:
+
+1. Read the existing project structure.
+2. Read the relevant existing files.
+3. Understand how data currently flows from React → API → backend → external services → React.
+4. Identify existing functions that can be extended.
+5. Reuse existing components, API functions, Supabase data and recommendation logic wherever possible.
+6. Keep the existing UI style, dark theme, responsive behavior and Locora branding.
+7. Keep the application working after every step.
+8. Do not expose API keys in frontend code.
+9. Do not hardcode fake places, fake ratings, fake availability or fake recommendation data.
+10. Use real data whenever the existing application already has access to it.
+11. If a feature cannot be fully supported by available real data, represent the limitation honestly instead of inventing data.
+
+IMPLEMENT THESE STEPS IN ORDER.
+
+After completing each step:
+
+* run/build the project
+* check for compile/runtime errors
+* verify existing functionality still works
+* summarize files changed
+* explain what was implemented
+* do NOT continue to the next step automatically.
+
+---
+
+# STEP 1 — SMART CONTEXT ENGINE
+
+## Goal
+
+Upgrade Locora's existing recommendation context into a unified Smart Context object that represents the traveler's current situation.
+
+The Smart Context must suppor
+<truncated 15579 bytes>
+              TOP EXPERIENCES
+                      │
+          ┌───────────┴───────────┐
+          ▼                       ▼
+   WHY THIS FITS            USER SELECTION
+                                  │
+                                  ▼
+                           ITINERARY UPDATE
+                                  │
+                                  ▼
+                         CONTEXT CHANGES
+                                  │
+                                  ▼
+                         DYNAMIC REPLAN
+```
+
+## FINAL RULES
+
+Do not use Gemini for deterministic calculations.
+
+Do not fabricate unavailable information.
+
+Do not expose API keys.
+
+Do not break existing Locora features.
+
+Do not duplicate existing functions unnecessarily.
+
+Do not replace real Google/Supabase data with mock data.
+
+Do not create a second recommendation engine.
+
+Do not make conversational discovery bypass the Smart Context and Match Score systems.
+
+Every feature must remain responsive and consistent with the existing Locora dark UI.
+
+The final result should feel like one intelligent Locora system, not seven disconnected features.
+
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-09-26T21:02:54+05:30.
+
+The user's current state is as follows:
+Active Document: c:\Users\Pratik\OneDrive\Documents\Pratik\VsCode\locora\src\utils\formatters.js (LANGUAGE_JAVASCRIPT)
+Cursor is on line: 1
+Other open documents:
+- c:\Users\Pratik\OneDrive\Documents\Pratik\VsCode\locora\src\utils\formatters.js (LANGUAGE_JAVASCRIPT)
+- c:\Users\Pratik\OneDrive\Documents\Pratik\VsCode\locora\.env (LANGUAGE_UNSPECIFIED)
+- c:\Users\Pratik\OneDrive\Documents\Pratik\VsCode\locora\src\pages\CreateTrip.jsx (LANGUAGE_JAVASCRIPT)
+- c:\Users\Pratik\OneDrive\Documents\Pratik\VsCode\locora\src\services\api.js (LANGUAGE_JAVASCRIPT)
+- c:\Users\Pratik\OneDrive\Documents\Pratik\VsCode\locora\scratch\test_google_places.js (LANGUAGE_JAVASCRIPT)
+</ADDITIONAL_METADATA>

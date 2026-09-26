@@ -1,7 +1,36 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import Modal from './Modal';
+import CustomDropdown from './CustomDropdown';
 import { Globe, Bell, MapPin, Sliders } from 'lucide-react';
+
+const LANGUAGE_OPTIONS = [
+  { value: 'English (US)', label: 'English (US)' },
+  { value: 'English (UK)', label: 'English (UK)' },
+  { value: 'French', label: 'Français' },
+  { value: 'German', label: 'Deutsch' },
+  { value: 'Spanish', label: 'Español' },
+  { value: 'Japanese', label: '日本語' }
+];
+
+const CURRENCY_OPTIONS = [
+  { value: 'INR (₹)', label: 'INR (₹)' },
+  { value: 'USD ($)', label: 'USD ($)' },
+  { value: 'EUR (€)', label: 'EUR (€)' },
+  { value: 'GBP (£)', label: 'GBP (£)' },
+  { value: 'JPY (¥)', label: 'JPY (¥)' }
+];
+
+const DISTANCE_OPTIONS = [
+  { value: 'Kilometers (km)', label: 'Kilometers (km)' },
+  { value: 'Miles (mi)', label: 'Miles (mi)' }
+];
+
+const PRIVACY_OPTIONS = [
+  { value: 'Balanced', label: 'Balanced (Recommended)' },
+  { value: 'Strict', label: 'Strict Privacy (Minimal Tracking)' },
+  { value: 'Personalized', label: 'Max Personalization' }
+];
 
 const SettingsModal = () => {
   const { isSettingsOpen, closeSettings, userPreferences, updatePreferences } = useAuth();
@@ -43,46 +72,39 @@ const SettingsModal = () => {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label">Language</label>
-              <select
-                className="form-select"
+              <CustomDropdown
                 value={userPreferences.language}
-                onChange={(e) => updatePreferences({ language: e.target.value })}
-              >
-                <option value="English (US)">English (US)</option>
-                <option value="English (UK)">English (UK)</option>
-                <option value="French">Français</option>
-                <option value="German">Deutsch</option>
-                <option value="Spanish">Español</option>
-                <option value="Japanese">日本語</option>
-              </select>
+                onChange={(val) => updatePreferences({ language: val })}
+                options={LANGUAGE_OPTIONS}
+                pill={false}
+                fullWidth
+                align="left"
+              />
             </div>
 
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label">Currency</label>
-              <select
-                className="form-select"
+              <CustomDropdown
                 value={userPreferences.currency}
-                onChange={(e) => updatePreferences({ currency: e.target.value })}
-              >
-                <option value="INR (₹)">INR (₹)</option>
-                <option value="USD ($)">USD ($)</option>
-                <option value="EUR (€)">EUR (€)</option>
-                <option value="GBP (£)">GBP (£)</option>
-                <option value="JPY (¥)">JPY (¥)</option>
-              </select>
+                onChange={(val) => updatePreferences({ currency: val })}
+                options={CURRENCY_OPTIONS}
+                pill={false}
+                fullWidth
+                align="right"
+              />
             </div>
           </div>
 
           <div className="form-group" style={{ marginTop: '14px', marginBottom: 0 }}>
             <label className="form-label">Distance Units</label>
-            <select
-              className="form-select"
+            <CustomDropdown
               value={userPreferences.distanceUnits}
-              onChange={(e) => updatePreferences({ distanceUnits: e.target.value })}
-            >
-              <option value="Kilometers (km)">Kilometers (km)</option>
-              <option value="Miles (mi)">Miles (mi)</option>
-            </select>
+              onChange={(val) => updatePreferences({ distanceUnits: val })}
+              options={DISTANCE_OPTIONS}
+              pill={false}
+              fullWidth
+              align="left"
+            />
           </div>
         </section>
 
@@ -167,15 +189,14 @@ const SettingsModal = () => {
 
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label">Data & Privacy Mode</label>
-              <select
-                className="form-select"
+              <CustomDropdown
                 value={userPreferences.dataPrivacy}
-                onChange={(e) => updatePreferences({ dataPrivacy: e.target.value })}
-              >
-                <option value="Balanced">Balanced (Recommended)</option>
-                <option value="Strict">Strict Privacy (Minimal Tracking)</option>
-                <option value="Personalized">Max Personalization</option>
-              </select>
+                onChange={(val) => updatePreferences({ dataPrivacy: val })}
+                options={PRIVACY_OPTIONS}
+                pill={false}
+                fullWidth
+                align="left"
+              />
             </div>
           </div>
         </section>

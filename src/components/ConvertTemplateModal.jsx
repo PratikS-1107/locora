@@ -108,7 +108,7 @@ const ConvertTemplateModal = ({
     });
   };
 
-  const todayStr = getTodayLocalDateString();
+  const todayStr = new Date().toISOString().split('T')[0];
 
   return (
     <Modal
