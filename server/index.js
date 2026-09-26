@@ -444,10 +444,6 @@ router.post('/places/details', async (req, res) => {
     return res.status(500).json({ success: false, error: 'Unable to retrieve place details right now.' });
   }
 });
-    console.error('Error in place details endpoint:', err);
-    return res.status(500).json({ success: false, error: 'Unable to retrieve place details.' });
-  }
-});
 
 // Smart Semantic Relevance Scoring Engine (Score: 0 - 100)
 // Categories are hard-guided by relevance, allowing natural overlaps (e.g. Local + Food, Local + Cultural)
