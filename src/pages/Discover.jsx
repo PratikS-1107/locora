@@ -55,6 +55,22 @@ const Discover = () => {
   // User-Selected Destination State
   const [selectedDestination, setSelectedDestination] = useState(null);
 
+  // Refs to prevent asynchronous stale closures (e.g. from detectLocation or loadDiscoverContext)
+  // from accidentally overwriting a user's manually searched destination
+  const locationModeRef = useRef('gps');
+  const selectedDestinationRef = useRef(null);
+  const isManualOverrideRef = useRef(false);
+
+  useEffect(() => {
+    locationModeRef.current = locationMode;
+  }, [locationMode]);
+  useEffect(() => {
+    selectedDestinationRef.current = selectedDestination;
+  }, [selectedDestination]);
+  useEffect(() => {
+    isManualOverrideRef.current = isManualOverride;
+  }, [isManualOverride]);
+
   // Browser GPS State
   const [userGpsCoords, setUserGpsCoords] = useState(null);
   const [userGpsName, setUserGpsName] = useState(null);
@@ -165,31 +181,32 @@ const Discover = () => {
   };
 
   // Derive the active location object based on mode priority
+  // Rule: When user selects 'destination', NEVER silently fall back to GPS or Active Trip
   const getEffectiveLocation = () => {
-    if (locationMode === 'destination' && selectedDestination) {
+    if (locationMode === 'destination') {
       return selectedDestination;
     }
-    if (locationMode === 'active_trip' && context?.hasTrip && context?.activeTripLocation) {
-      return context.activeTripLocation;
+    if (locationMode === 'active_trip') {
+      return (context?.hasTrip && context?.activeTripLocation) ? context.activeTripLocation : null;
     }
-    if (locationMode === 'gps' && userGpsCoords) {
-      return {
-        destination: userGpsName?.split(',')[0]?.trim() || 'Current Location',
-        city: userGpsName?.split(',')[0]?.trim() || 'Current Location',
-        country: userGpsName?.includes(',') ? userGpsName.split(',')[1]?.trim() : '',
-        country_code: '',
-        latitude: userGpsCoords.latitude,
-        longitude: userGpsCoords.longitude,
-        formatted_address: userGpsName || 'Current Location',
-        source: userGpsSource || 'Browser GPS'
-      };
+    if (locationMode === 'gps') {
+      if (userGpsCoords) {
+        return {
+          destination: userGpsName?.split(',')[0]?.trim() || 'Current Location',
+          city: userGpsName?.split(',')[0]?.trim() || 'Current Location',
+          country: userGpsName?.includes(',') ? userGpsName.split(',')[1]?.trim() : '',
+          country_code: '',
+          latitude: userGpsCoords.latitude,
+          longitude: userGpsCoords.longitude,
+          formatted_address: userGpsName || 'Current Location',
+          source: userGpsSource || 'Browser GPS'
+        };
+      }
+      return null;
     }
-    if (selectedDestination) {
-      return selectedDestination;
-    }
-    if (context?.hasTrip && context?.activeTripLocation && !isManualOverride) {
-      return context.activeTripLocation;
-    }
+    // Initial mount fallback before user interaction:
+    if (selectedDestination) return selectedDestination;
+    if (context?.hasTrip && context?.activeTripLocation && !isManualOverride) return context.activeTripLocation;
     if (userGpsCoords) {
       return {
         destination: userGpsName?.split(',')[0]?.trim() || 'Current Location',
@@ -214,8 +231,9 @@ const Discover = () => {
         setContext(ctx);
 
         // Priority Rule: If active trip exists and user has NOT manually chosen a destination, set active_trip mode
-        if (ctx.hasTrip && ctx.activeTripLocation && !isManualOverride && !selectedDestination) {
+        if (ctx.hasTrip && ctx.activeTripLocation && !isManualOverrideRef.current && !selectedDestinationRef.current && locationModeRef.current !== 'destination') {
           setLocationMode('active_trip');
+          locationModeRef.current = 'active_trip';
         }
       } else {
         setContext({
@@ -265,8 +283,9 @@ const Discover = () => {
       setUserGpsSource(resolved.source || 'Browser GPS');
 
       // If no manual destination override and no active trip, stay in GPS mode
-      if (!isManualOverride && (!context?.hasTrip || !context?.activeTripLocation)) {
+      if (!isManualOverrideRef.current && locationModeRef.current !== 'destination' && !selectedDestinationRef.current && (!context?.hasTrip || !context?.activeTripLocation)) {
         setLocationMode('gps');
+        locationModeRef.current = 'gps';
       }
     } catch (err) {
       console.warn('Geolocation detection error:', err);
@@ -281,8 +300,9 @@ const Discover = () => {
   };
 
   // 3. Fetch Recommendations based on the active location coordinates
-  const fetchRecs = async (overrideIntent = activeIntent, locationObj = null) => {
-    const loc = locationObj || getEffectiveLocation();
+  const fetchRecs = async (overrideIntent = activeIntent, locationObj = null, modeOverride = null, forceRefresh = false) => {
+    const currentMode = modeOverride || locationMode;
+    const loc = locationObj || (currentMode === 'destination' ? selectedDestination : getEffectiveLocation());
 
     if (!loc || !Number.isFinite(loc.latitude) || !Number.isFinite(loc.longitude)) {
       setRecommendations([]);
@@ -304,13 +324,13 @@ const Discover = () => {
             longitude: loc.longitude
           }
         },
-        trip: locationMode === 'active_trip' ? (context?.activeTrip || null) : null,
-        available_windows: context?.availableWindows || (context?.availableTimeMinutes ? [{ duration_minutes: context.availableTimeMinutes }] : []),
+        trip: currentMode === 'active_trip' ? (context?.activeTrip || null) : null,
+        available_windows: currentMode === 'active_trip' ? (context?.availableWindows || (context?.availableTimeMinutes ? [{ duration_minutes: context.availableTimeMinutes }] : [])) : [],
         intent: overrideIntent,
-        availableTimeMinutes: context?.availableTimeMinutes || null,
-        remainingBudget: context?.remainingBudget || null,
-        occupiedItems: context?.occupiedItems || []
-      });
+        availableTimeMinutes: currentMode === 'active_trip' ? (context?.availableTimeMinutes || null) : null,
+        remainingBudget: currentMode === 'active_trip' ? (context?.remainingBudget || null) : null,
+        occupiedItems: currentMode === 'active_trip' ? (context?.occupiedItems || []) : []
+      }, { forceRefresh });
 
       setRecommendations(recs || []);
     } catch (e) {
@@ -345,6 +365,50 @@ const Discover = () => {
   // Handle Intent / Category Switch
   const handleIntentChange = (intentId) => {
     setActiveIntent(intentId);
+  };
+
+  // Submit manual destination search (e.g. on Enter key)
+  const handleSearchSubmit = async (queryText = searchQuery) => {
+    const q = (queryText || '').trim();
+    if (!q) return;
+
+    if (searchSuggestions.length > 0) {
+      handleSelectPrediction(searchSuggestions[0]);
+      return;
+    }
+
+    setIsSearchingPlaces(true);
+    setShowSuggestions(false);
+    try {
+      const resolved = await resolveDestinationLocation(q);
+      if (resolved && Number.isFinite(resolved.latitude) && Number.isFinite(resolved.longitude)) {
+        const newDestLocation = {
+          destination: resolved.city || resolved.destination || q,
+          city: resolved.city || resolved.destination || q,
+          country: resolved.country || '',
+          country_code: resolved.country_code || '',
+          latitude: Number(resolved.latitude),
+          longitude: Number(resolved.longitude),
+          place_id: resolved.place_id || '',
+          formatted_address: resolved.formatted_address || q,
+          source: resolved.source || 'Search'
+        };
+        locationModeRef.current = 'destination';
+        selectedDestinationRef.current = newDestLocation;
+        isManualOverrideRef.current = true;
+        setSelectedDestination(newDestLocation);
+        setLocationMode('destination');
+        setIsManualOverride(true);
+        showToast(`Exploring experiences in ${resolved.city || q}`);
+        fetchRecs(activeIntent, newDestLocation, 'destination', false);
+      } else {
+        showToast("Couldn't resolve that location. Try another place or area.");
+      }
+    } catch (err) {
+      showToast("Couldn't resolve that location. Try another place or area.");
+    } finally {
+      setIsSearchingPlaces(false);
+    }
   };
 
   // Handle Destination Prediction Selection from Google Places Autocomplete
@@ -401,17 +465,20 @@ const Discover = () => {
           source: 'Google Places'
         };
 
+        locationModeRef.current = 'destination';
+        selectedDestinationRef.current = newDestLocation;
+        isManualOverrideRef.current = true;
         setSelectedDestination(newDestLocation);
         setLocationMode('destination');
         setIsManualOverride(true);
         showToast(`Exploring experiences in ${city || destName}`);
-        fetchRecs(activeIntent, newDestLocation);
+        fetchRecs(activeIntent, newDestLocation, 'destination', false);
       } else {
-        showToast('Unable to locate coordinates for this destination.');
+        showToast("Couldn't resolve that location. Try another place or area.");
       }
     } catch (err) {
       console.error('Error selecting destination:', err);
-      showToast('Unable to search this destination right now.');
+      showToast("Couldn't resolve that location. Try another place or area.");
     } finally {
       setIsSearchingPlaces(false);
     }
@@ -419,6 +486,9 @@ const Discover = () => {
 
   // Switch to Current Browser GPS Location
   const handleUseCurrentLocation = async () => {
+    locationModeRef.current = 'gps';
+    selectedDestinationRef.current = null;
+    isManualOverrideRef.current = true;
     setIsManualOverride(true);
     setLocationMode('gps');
     setSelectedDestination(null);
@@ -437,7 +507,7 @@ const Discover = () => {
         formatted_address: userGpsName || 'Current Location',
         source: userGpsSource || 'Browser GPS'
       };
-      fetchRecs(activeIntent, gpsLocation);
+      fetchRecs(activeIntent, gpsLocation, 'gps');
     } else {
       await detectLocation();
     }
@@ -446,28 +516,35 @@ const Discover = () => {
   // Switch to Active Trip Destination
   const handleSwitchToActiveTrip = () => {
     if (context?.hasTrip && context?.activeTripLocation) {
+      locationModeRef.current = 'active_trip';
+      selectedDestinationRef.current = null;
+      isManualOverrideRef.current = false;
       setIsManualOverride(false);
       setLocationMode('active_trip');
       setSelectedDestination(null);
       setSearchQuery('');
       setShowSuggestions(false);
       showToast(`Switched to active trip destination (${context.destination})`);
-      fetchRecs(activeIntent, context.activeTripLocation);
+      fetchRecs(activeIntent, context.activeTripLocation, 'active_trip');
     }
   };
 
   // Clear manual destination search
   const handleClearDestinationSearch = () => {
+    selectedDestinationRef.current = null;
     setSelectedDestination(null);
     setSearchQuery('');
     setShowSuggestions(false);
     setSearchSuggestions([]);
 
     if (context?.hasTrip && context?.activeTripLocation) {
+      locationModeRef.current = 'active_trip';
+      isManualOverrideRef.current = false;
       setLocationMode('active_trip');
       setIsManualOverride(false);
-      fetchRecs(activeIntent, context.activeTripLocation);
+      fetchRecs(activeIntent, context.activeTripLocation, 'active_trip');
     } else {
+      locationModeRef.current = 'gps';
       setLocationMode('gps');
       if (userGpsCoords) {
         const gpsLocation = {
@@ -480,7 +557,7 @@ const Discover = () => {
           formatted_address: userGpsName || 'Current Location',
           source: userGpsSource || 'Browser GPS'
         };
-        fetchRecs(activeIntent, gpsLocation);
+        fetchRecs(activeIntent, gpsLocation, 'gps');
       } else {
         detectLocation();
       }
@@ -663,7 +740,7 @@ const Discover = () => {
               </div>
             </div>
             <button
-              onClick={() => fetchRecs(activeIntent)}
+              onClick={() => fetchRecs(activeIntent, null, null, true)}
               disabled={recsLoading || !effectiveLocation}
               className="btn btn-secondary"
               style={{ padding: '5px 10px', fontSize: '0.75rem', marginLeft: '4px' }}
@@ -709,6 +786,12 @@ const Discover = () => {
                 }}
                 onFocus={() => {
                   if (searchSuggestions.length > 0) setShowSuggestions(true);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleSearchSubmit();
+                  }
                 }}
                 style={{
                   height: '42px',

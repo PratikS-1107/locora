@@ -25,7 +25,7 @@ export const generateNvidiaResponse = async (messages, options = {}) => {
     for (const model of models) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 12000);
+        const timeoutId = setTimeout(() => controller.abort(), 3500);
 
         const response = await fetch(url, {
           method: 'POST',
@@ -51,6 +51,7 @@ export const generateNvidiaResponse = async (messages, options = {}) => {
           }
         } else {
           const errText = await response.text();
+          console.error(`[AI ERROR] Provider: NVIDIA | Model: ${model} | Pool: CONVERSATIONAL | Endpoint: ${url} | HTTP Status: ${response.status} | Error: ${errText}`);
           const err = new Error(`NVIDIA API (${model}) HTTP ${response.status}: ${errText}`);
           err.status = response.status;
           err.statusCode = response.status;
@@ -60,6 +61,7 @@ export const generateNvidiaResponse = async (messages, options = {}) => {
           lastError = err;
         }
       } catch (fetchErr) {
+        console.error(`[AI ERROR] Provider: NVIDIA | Model: ${model} | Pool: CONVERSATIONAL | Endpoint: ${url} | Message: ${fetchErr.message}`);
         if (fetchErr.status === 429 || fetchErr.statusCode === 429) {
           throw fetchErr;
         }

@@ -205,11 +205,15 @@ export const processSmartRecommendations = async ({
 }) => {
   const intentKey = (category || 'local').toLowerCase().trim();
 
-  // 1. Filter candidates by strict travel time and budget feasibility
-  const feasibleCandidates = filterCandidatesByConstraints(candidates, {
+  // 1. Filter candidates by travel time and budget feasibility
+  let feasibleCandidates = filterCandidatesByConstraints(candidates, {
     availableMinutes,
     budget
   });
+
+  if (feasibleCandidates.length === 0 && candidates.length > 0) {
+    feasibleCandidates = candidates.slice().sort((a, b) => (a.distanceKm || 99) - (b.distanceKm || 99)).slice(0, 8);
+  }
 
   if (feasibleCandidates.length === 0) {
     return {

@@ -2312,7 +2312,8 @@ const getRecommendationsUncached = async (context = {}) => {
 // React Strict Mode deliberately replays mount effects in development. Share one
 // request for an identical GPS/category/context snapshot so this does not create
 // duplicate Places or Gemini work on the server.
-export const getRecommendations = async (context = {}) => {
+export const getRecommendations = async (context = {}, options = {}) => {
+  const forceRefresh = Boolean(options.forceRefresh || context.forceRefresh);
   const coords = context.location?.coords;
   if (!coords || !Number.isFinite(coords.latitude) || !Number.isFinite(coords.longitude)) return [];
 
@@ -2324,9 +2325,15 @@ export const getRecommendations = async (context = {}) => {
     context.availableTimeMinutes ?? '',
     context.remainingBudget ?? ''
   ].join(':');
-  const cached = recommendationRequestCache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < 30_000) return cached.data;
-  if (recommendationInFlight.has(cacheKey)) return recommendationInFlight.get(cacheKey);
+
+  if (!forceRefresh) {
+    const cached = recommendationRequestCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < 30_000) return cached.data;
+    if (recommendationInFlight.has(cacheKey)) return recommendationInFlight.get(cacheKey);
+  } else {
+    recommendationRequestCache.delete(cacheKey);
+    recommendationInFlight.delete(cacheKey);
+  }
 
   const request = getRecommendationsUncached(context)
     .then((data) => {
@@ -2405,6 +2412,14 @@ export const getTripDayRecommendations = async ({
     lng = lastActWithCoords.longitude;
   }
 
+  // Check if trip itself has coordinates
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    if (Number.isFinite(trip.latitude) && Number.isFinite(trip.longitude)) {
+      lat = Number(trip.latitude);
+      lng = Number(trip.longitude);
+    }
+  }
+
   // If no activity coordinates, resolve from destination name
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
     const resolved = await resolveDestinationLocation(trip.destination);
@@ -2437,20 +2452,35 @@ export const getTripDayRecommendations = async ({
     destination: trip.destination
   });
 
-  // 5. Exclude activities that are already planned on this day
-  if (res.success && Array.isArray(res.recommendations)) {
-    const existingTitles = new Set(dayActivities.map(a => (a.title || '').toLowerCase().trim()));
-    const filtered = res.recommendations.filter(r => !existingTitles.has((r.name || r.title || '').toLowerCase().trim()));
-    return {
-      ...res,
-      recommendations: filtered,
-      availableMinutes,
-      remainingBudget,
-      scheduledMinutes
-    };
+  let recommendationsList = (res.success && Array.isArray(res.recommendations)) ? res.recommendations : [];
+
+  // Fallback to real Google Places candidates with deterministic ranking if AI endpoint returned empty
+  if (recommendationsList.length === 0) {
+    try {
+      const places = await fetchGoogleNearbyPlaces({
+        latitude: lat,
+        longitude: lng,
+        intent: categoryParam || 'local',
+        budget: remainingBudget || 5000,
+        availableTimeMinutes: availableMinutes || 240
+      });
+      if (Array.isArray(places) && places.length > 0) {
+        recommendationsList = places;
+      }
+    } catch (_) {}
   }
 
-  return res;
+  // 5. Exclude activities that are already planned on this day
+  const existingTitles = new Set(dayActivities.map(a => (a.title || '').toLowerCase().trim()));
+  const filtered = recommendationsList.filter(r => !existingTitles.has((r.name || r.title || '').toLowerCase().trim()));
+
+  return {
+    success: true,
+    recommendations: filtered,
+    availableMinutes,
+    remainingBudget,
+    scheduledMinutes
+  };
 };
 
 /**

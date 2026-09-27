@@ -19,6 +19,8 @@ dotenv.config();
 export const generateGeminiResponse = async (prompt, options = {}) => {
   const pool = (typeof options === 'string' ? options : options?.pool || 'DISCOVER').toUpperCase();
   const models = options?.models || [
+    'gemini-3.8-flash',
+    'gemini-3.5-flash-lite',
     'gemini-flash-latest'
   ];
 
@@ -26,15 +28,15 @@ export const generateGeminiResponse = async (prompt, options = {}) => {
     let lastError = null;
 
     for (const model of models) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
       try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-
         const response = await fetch(url, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'X-goog-api-key': apiKey
           },
+          signal: AbortSignal.timeout(8000),
           body: JSON.stringify({
             contents: [
               {
@@ -56,6 +58,7 @@ export const generateGeminiResponse = async (prompt, options = {}) => {
           }
         } else {
           const errText = await response.text();
+          console.error(`[AI ERROR] Provider: Google Gemini | Model: ${model} | Pool: ${pool} | Endpoint: ${url} | HTTP Status: ${response.status} | Error: ${errText}`);
           const err = new Error(`Gemini API (${model}) HTTP ${response.status}: ${errText}`);
           err.status = response.status;
           err.statusCode = response.status;
@@ -68,6 +71,7 @@ export const generateGeminiResponse = async (prompt, options = {}) => {
           lastError = err;
         }
       } catch (fetchErr) {
+        console.error(`[AI ERROR] Provider: Google Gemini | Model: ${model} | Pool: ${pool} | Endpoint: ${url} | Message: ${fetchErr.message}`);
         // If it's already a rate limit error, propagate it directly for key failover
         if (fetchErr.status === 429 || fetchErr.statusCode === 429 || fetchErr.message?.includes('RESOURCE_EXHAUSTED') || fetchErr.message?.includes('429')) {
           throw fetchErr;
