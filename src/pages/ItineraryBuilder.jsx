@@ -654,23 +654,59 @@ const ItineraryBuilder = () => {
 
   if (loading) {
     return (
-      <div style={{ padding: '80px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-        <div style={{ width: '24px', height: '24px', border: '2px solid rgba(255,255,255,0.1)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 16px auto' }} />
-        Loading itinerary workspace...
+      <div style={{
+        minHeight: '80vh',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '120px 24px 80px 24px',
+        textAlign: 'center',
+        color: 'var(--text-secondary)'
+      }}>
+        <div style={{
+          width: '32px',
+          height: '32px',
+          border: '3px solid rgba(255,255,255,0.1)',
+          borderTopColor: 'var(--primary)',
+          borderRadius: '50%',
+          animation: 'spin 0.8s linear infinite',
+          margin: '0 auto 16px auto'
+        }} />
+        <span style={{ fontSize: '0.95rem', fontWeight: 500 }}>Loading itinerary workspace...</span>
       </div>
     );
   }
 
   if (loadError || !trip) {
     return (
-      <div style={{ width: '100%', maxWidth: '600px', margin: '60px auto', textAlign: 'center' }}>
-        <div className="glass-panel" style={{ padding: '40px' }}>
-          <AlertTriangle size={36} style={{ color: '#f87171', marginBottom: '16px' }} />
-          <h2 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '8px' }}>Cannot Open Itinerary Editor</h2>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '24px' }}>
+      <div style={{
+        minHeight: '80vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '120px 24px 80px 24px'
+      }}>
+        <div className="glass-panel" style={{
+          maxWidth: '560px',
+          width: '100%',
+          padding: '40px',
+          textAlign: 'center',
+          borderRadius: '24px',
+          border: '1px solid rgba(255, 255, 255, 0.12)'
+        }}>
+          <AlertTriangle size={36} style={{ color: '#f87171', margin: '0 auto 16px auto' }} />
+          <h2 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '8px', color: '#ffffff' }}>
+            Cannot Open Itinerary Editor
+          </h2>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '24px', lineHeight: 1.6 }}>
             {loadError || 'This trip could not be found or you do not have permission to view it.'}
           </p>
-          <button onClick={() => navigate('/my-trips')} className="btn btn-primary" style={{ padding: '10px 24px' }}>
+          <button
+            onClick={() => navigate('/my-trips')}
+            className="btn btn-primary"
+            style={{ padding: '10px 24px', borderRadius: '9999px' }}
+          >
             Back to My Trips
           </button>
         </div>
@@ -681,10 +717,25 @@ const ItineraryBuilder = () => {
   // Protection Guard: If the trip is not personal or not owned by the current user
   if (!canEdit) {
     return (
-      <div style={{ width: '100%', maxWidth: '640px', margin: '60px auto', textAlign: 'center' }}>
-        <div className="glass-panel" style={{ padding: '40px' }}>
-          <Lock size={36} style={{ color: 'var(--accent-amber)', marginBottom: '16px' }} />
-          <h2 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '8px' }}>Read-Only Itinerary</h2>
+      <div style={{
+        minHeight: '80vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '120px 24px 80px 24px'
+      }}>
+        <div className="glass-panel" style={{
+          maxWidth: '640px',
+          width: '100%',
+          padding: '40px',
+          textAlign: 'center',
+          borderRadius: '24px',
+          border: '1px solid rgba(255, 255, 255, 0.12)'
+        }}>
+          <Lock size={36} style={{ color: 'var(--accent-amber)', margin: '0 auto 16px auto' }} />
+          <h2 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '8px', color: '#ffffff' }}>
+            Read-Only Itinerary
+          </h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.6, marginBottom: '24px' }}>
             {trip.trip_source === 'template'
               ? 'This is a curated Explore template and cannot be edited directly. To customize it, click "Use Template" or "Copy Trip" from Explore.'
@@ -693,10 +744,18 @@ const ItineraryBuilder = () => {
               : 'You do not have permission to edit this personal trip.'}
           </p>
           <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
-            <button onClick={() => navigate('/my-trips')} className="btn btn-secondary" style={{ padding: '10px 20px' }}>
+            <button
+              onClick={() => navigate('/my-trips')}
+              className="btn btn-secondary"
+              style={{ padding: '10px 20px', borderRadius: '9999px' }}
+            >
               Back to My Trips
             </button>
-            <Link to={`/trip/${trip.id}`} className="btn btn-primary" style={{ padding: '10px 20px' }}>
+            <Link
+              to={`/trip/${trip.id}`}
+              className="btn btn-primary"
+              style={{ padding: '10px 20px', borderRadius: '9999px', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+            >
               <Eye size={16} />
               <span>View Itinerary</span>
             </Link>
@@ -709,73 +768,70 @@ const ItineraryBuilder = () => {
   const tripTitle = trip.title || trip.name || 'My Journey Itinerary';
 
   return (
-    <div style={{ width: '100%', maxWidth: '1240px', margin: '0 auto', paddingBottom: '60px' }}>
+    <div className="itinerary-builder-page page-entrance">
 
       {/* Toast Feedback */}
       {toastMsg && (
         <div style={{
-          position: 'fixed', bottom: '24px', right: '24px', zIndex: 1000,
-          backgroundColor: 'rgba(15, 23, 42, 0.95)', border: '1px solid var(--primary)',
-          borderRadius: 'var(--radius-md)', padding: '14px 20px', color: '#fff',
-          boxShadow: 'var(--shadow-lg)', backdropFilter: 'blur(16px)',
-          display: 'flex', alignItems: 'center', gap: '10px'
+          position: 'fixed',
+          bottom: '24px',
+          right: '24px',
+          zIndex: 1000,
+          backgroundColor: 'rgba(15, 23, 42, 0.95)',
+          border: '1px solid var(--primary)',
+          borderRadius: 'var(--radius-md)',
+          padding: '14px 20px',
+          color: '#fff',
+          boxShadow: 'var(--shadow-lg)',
+          backdropFilter: 'blur(16px)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px'
         }}>
           <CheckCircle2 size={18} style={{ color: 'var(--primary)' }} />
           <span>{toastMsg}</span>
         </div>
       )}
 
-      {/* TOP HEADER */}
+      {/* TOP NAVIGATION & ACTION ROW */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        marginBottom: '28px',
+        marginBottom: '24px',
         flexWrap: 'wrap',
-        gap: '16px',
-        paddingBottom: '20px',
-        borderBottom: '1px solid var(--border-subtle)'
+        gap: '16px'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <button onClick={() => navigate('/my-trips')} className="btn btn-secondary" style={{ padding: '8px 14px' }}>
-            <ArrowLeft size={16} />
-            <span>Back to My Trips</span>
-          </button>
-
-          <div>
-            <h1 style={{ fontSize: '1.75rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
-              {tripTitle}
-            </h1>
-            <div style={{ display: 'flex', gap: '16px', fontSize: '0.875rem', color: 'var(--text-secondary)', marginTop: '4px', flexWrap: 'wrap', alignItems: 'center' }}>
-              {trip.start_date && trip.end_date && (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                  <Calendar size={14} style={{ color: 'var(--primary)' }} />
-                  <span>{trip.start_date} — {trip.end_date}</span>
-                  {canEdit && (
-                    <button
-                      type="button"
-                      onClick={handleOpenDatesModal}
-                      className="btn-icon"
-                      style={{ width: '24px', height: '24px', padding: 0 }}
-                      title="Edit Trip Dates"
-                    >
-                      <Edit3 size={12} />
-                    </button>
-                  )}
-                </span>
-              )}
-              {trip.destination && (
-                <span>📍 {trip.destination}{trip.country ? `, ${trip.country}` : ''}</span>
-              )}
-            </div>
-          </div>
-        </div>
+        <button
+          onClick={() => navigate('/my-trips')}
+          className="btn btn-secondary"
+          style={{
+            borderRadius: '9999px',
+            padding: '9px 18px',
+            fontSize: '0.85rem',
+            fontWeight: 600,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}
+        >
+          <ArrowLeft size={16} />
+          <span>Back to My Trips</span>
+        </button>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <Link
             to={`/trip/${trip.id}`}
             className="btn btn-secondary"
-            style={{ padding: '8px 16px', fontSize: '0.875rem' }}
+            style={{
+              borderRadius: '9999px',
+              padding: '9px 18px',
+              fontSize: '0.85rem',
+              fontWeight: 600,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
           >
             <Eye size={16} />
             <span>View Itinerary</span>
@@ -784,7 +840,15 @@ const ItineraryBuilder = () => {
           <button
             onClick={handleGlobalSave}
             className="btn btn-primary"
-            style={{ padding: '8px 20px', fontSize: '0.875rem', fontWeight: 700 }}
+            style={{
+              borderRadius: '9999px',
+              padding: '9px 22px',
+              fontSize: '0.85rem',
+              fontWeight: 700,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
           >
             <Save size={16} />
             <span>{saveStatus}</span>
@@ -792,8 +856,244 @@ const ItineraryBuilder = () => {
         </div>
       </div>
 
-      {/* WORKSPACE MAIN LAYOUT (LEFT / RIGHT) */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '32px', alignItems: 'start' }} className="itinerary-workspace-grid">
+      {/* 2. TRIP HERO SECTION WITH COVER IMAGE */}
+      <div className="itinerary-hero-banner">
+        {/* Cover Background Visual */}
+        {trip.cover_image_url ? (
+          <img
+            src={trip.cover_image_url}
+            alt={tripTitle}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              objectPosition: 'center',
+              filter: 'brightness(0.68)'
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.28) 0%, rgba(13, 18, 31, 0.96) 100%)'
+            }}
+          />
+        )}
+
+        {/* Dark Gradient Overlay for Maximum Legibility */}
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'linear-gradient(to top, rgba(7, 10, 16, 0.98) 0%, rgba(7, 10, 16, 0.62) 50%, rgba(7, 10, 16, 0.28) 100%)',
+            pointerEvents: 'none'
+          }}
+        />
+
+        {/* Hero Content */}
+        <div
+          style={{
+            position: 'relative',
+            zIndex: 2,
+            padding: '36px 36px 32px 36px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-end',
+            flexWrap: 'wrap',
+            gap: '20px'
+          }}
+        >
+          <div style={{ maxWidth: '820px', flex: 1, minWidth: '280px' }}>
+            {/* Badges Row */}
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+              <span
+                style={{
+                  backgroundColor: trip.is_public ? 'rgba(14, 165, 233, 0.2)' : 'rgba(255, 255, 255, 0.1)',
+                  border: trip.is_public ? '1px solid rgba(14, 165, 233, 0.4)' : '1px solid rgba(255, 255, 255, 0.16)',
+                  color: trip.is_public ? '#38bdf8' : '#cbd5e1',
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  padding: '4px 12px',
+                  borderRadius: '9999px',
+                  backdropFilter: 'blur(10px)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                {trip.is_public ? <Sparkles size={12} /> : <Lock size={12} />}
+                <span>{trip.is_public ? 'Public Itinerary' : 'Private Trip'}</span>
+              </span>
+
+              {days.length > 0 && (
+                <span
+                  style={{
+                    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                    border: '1px solid rgba(255, 255, 255, 0.14)',
+                    color: '#e2e8f0',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    padding: '4px 12px',
+                    borderRadius: '9999px',
+                    backdropFilter: 'blur(10px)'
+                  }}
+                >
+                  {days.length} {days.length === 1 ? 'Day' : 'Days'}
+                </span>
+              )}
+
+              {trip.trip_source && (
+                <span
+                  style={{
+                    backgroundColor: 'rgba(168, 85, 247, 0.2)',
+                    border: '1px solid rgba(168, 85, 247, 0.4)',
+                    color: '#c084fc',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    padding: '4px 12px',
+                    borderRadius: '9999px',
+                    backdropFilter: 'blur(10px)',
+                    textTransform: 'capitalize'
+                  }}
+                >
+                  {trip.trip_source}
+                </span>
+              )}
+            </div>
+
+            {/* Dominant Trip Title */}
+            <h1
+              style={{
+                fontSize: 'clamp(1.75rem, 3.5vw, 2.35rem)',
+                fontWeight: 800,
+                margin: '0 0 14px 0',
+                color: '#ffffff',
+                letterSpacing: '-0.025em',
+                lineHeight: 1.25,
+                textShadow: '0 2px 12px rgba(0, 0, 0, 0.7)'
+              }}
+            >
+              {tripTitle}
+            </h1>
+
+            {/* Dates & Location Row */}
+            <div style={{ display: 'flex', gap: '14px', fontSize: '0.875rem', color: '#cbd5e1', flexWrap: 'wrap', alignItems: 'center' }}>
+              {trip.start_date && trip.end_date ? (
+                <div
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    backgroundColor: 'rgba(15, 23, 42, 0.78)',
+                    border: '1px solid rgba(255, 255, 255, 0.14)',
+                    padding: '6px 14px',
+                    borderRadius: '9999px',
+                    backdropFilter: 'blur(12px)'
+                  }}
+                >
+                  <Calendar size={14} style={{ color: 'var(--primary)' }} />
+                  <span style={{ fontWeight: 600 }}>{trip.start_date} — {trip.end_date}</span>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={handleOpenDatesModal}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: 'var(--primary)',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        padding: '2px',
+                        marginLeft: '2px'
+                      }}
+                      title="Edit Trip Dates"
+                    >
+                      <Edit3 size={13} />
+                    </button>
+                  )}
+                </div>
+              ) : canEdit && (
+                <button
+                  type="button"
+                  onClick={handleOpenDatesModal}
+                  className="btn btn-secondary"
+                  style={{ padding: '6px 14px', fontSize: '0.8rem', borderRadius: '9999px' }}
+                >
+                  <Calendar size={13} />
+                  <span>Set Trip Dates</span>
+                </button>
+              )}
+
+              {trip.destination && (
+                <div
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    backgroundColor: 'rgba(15, 23, 42, 0.78)',
+                    border: '1px solid rgba(255, 255, 255, 0.14)',
+                    padding: '6px 14px',
+                    borderRadius: '9999px',
+                    backdropFilter: 'blur(12px)'
+                  }}
+                >
+                  <MapPin size={14} style={{ color: 'var(--accent-cyan)' }} />
+                  <span style={{ fontWeight: 600 }}>{trip.destination}{trip.country ? `, ${trip.country}` : ''}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Change Cover Action Overlay Button */}
+          {canEdit && (
+            <div>
+              <input
+                ref={coverInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/jpg"
+                style={{ display: 'none' }}
+                onChange={handleCoverFileChange}
+              />
+              <button
+                type="button"
+                onClick={() => coverInputRef.current?.click()}
+                disabled={isUploadingCover}
+                style={{
+                  background: 'rgba(20, 26, 38, 0.85)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  backdropFilter: 'blur(16px)',
+                  color: '#ffffff',
+                  padding: '9px 18px',
+                  borderRadius: '9999px',
+                  fontSize: '0.825rem',
+                  fontWeight: 600,
+                  cursor: isUploadingCover ? 'not-allowed' : 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  boxShadow: '0 4px 14px rgba(0, 0, 0, 0.5)',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.15)')}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'rgba(20, 26, 38, 0.85)')}
+                title="Upload new trip cover photo"
+              >
+                <Upload size={14} />
+                <span>{isUploadingCover ? 'Uploading...' : 'Change Cover'}</span>
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 3. MAIN EDITOR WORKSPACE (RESPONSIVE 2-COLUMN LAYOUT) */}
+      <div className="itinerary-builder-grid">
 
         {/* LEFT / MAIN AREA */}
         <div>
@@ -802,7 +1102,7 @@ const ItineraryBuilder = () => {
           {days.length > 0 ? (
             <div style={{
               display: 'flex',
-              gap: '8px',
+              gap: '10px',
               marginBottom: '24px',
               overflowX: 'auto',
               paddingBottom: '8px'
@@ -815,30 +1115,24 @@ const ItineraryBuilder = () => {
                   <button
                     key={day.id || idx}
                     onClick={() => setActiveDayIndex(idx)}
-                    style={{
-                      padding: '10px 18px',
-                      borderRadius: 'var(--radius-sm)',
-                      fontSize: '0.875rem',
-                      fontWeight: isActive ? 700 : 500,
-                      backgroundColor: isActive ? 'var(--primary)' : 'rgba(255, 255, 255, 0.04)',
-                      color: isActive ? '#ffffff' : 'var(--text-secondary)',
-                      border: '1px solid var(--border-subtle)',
-                      cursor: 'pointer',
-                      whiteSpace: 'nowrap',
-                      transition: 'all 0.2s ease',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'flex-start',
-                      minWidth: '110px'
-                    }}
+                    className={`itinerary-day-tab ${isActive ? 'active' : ''}`}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: '8px' }}>
-                      <span style={{ fontSize: '0.75rem', opacity: 0.85 }}>DAY {day.day_number || idx + 1}</span>
-                      <span style={{ fontSize: '0.7rem', padding: '1px 6px', borderRadius: '10px', background: isActive ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.08)' }}>
+                      <span style={{ fontSize: '0.725rem', letterSpacing: '0.04em', fontWeight: 700, opacity: isActive ? 1 : 0.75 }}>
+                        DAY {day.day_number || idx + 1}
+                      </span>
+                      <span style={{
+                        fontSize: '0.675rem',
+                        padding: '2px 7px',
+                        borderRadius: '9999px',
+                        fontWeight: 700,
+                        background: isActive ? 'rgba(14, 165, 233, 0.35)' : 'rgba(255, 255, 255, 0.08)',
+                        color: isActive ? '#38bdf8' : 'var(--text-muted)'
+                      }}>
                         {countForDay}
                       </span>
                     </div>
-                    <span style={{ fontSize: '0.85rem', fontWeight: 700, marginTop: '2px' }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 700, marginTop: '4px' }}>
                       {day.date || `Day ${idx + 1}`}
                     </span>
                   </button>
@@ -846,39 +1140,55 @@ const ItineraryBuilder = () => {
               })}
             </div>
           ) : (
-            <div className="glass-panel" style={{ padding: '20px', marginBottom: '24px', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+            <div className="glass-panel" style={{ padding: '20px', marginBottom: '24px', color: 'var(--text-muted)', fontSize: '0.9rem', borderRadius: '16px' }}>
               No itinerary days found for this trip. Set start and end dates in trip details to create days automatically.
             </div>
           )}
 
           {/* DAILY ITINERARY HEADER */}
           {currentDay && (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: '20px',
+              flexWrap: 'wrap',
+              gap: '14px',
+              padding: '16px 20px',
+              background: 'rgba(15, 23, 42, 0.5)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: '16px'
+            }}>
               <div>
-                <h2 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0 }}>
+                <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
                   DAY {currentDay.day_number || activeDayIndex + 1} — {currentDay.date || 'Scheduled Activities'}
                 </h2>
-                {currentDay.notes && (
-                  <p style={{ fontSize: '0.85rem', color: 'var(--accent-cyan)', margin: '4px 0 0 0' }}>
-                    📝 {currentDay.notes}
+                {currentDay.notes ? (
+                  <p style={{ fontSize: '0.85rem', color: 'var(--accent-cyan)', margin: '4px 0 0 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>📝</span>
+                    <span>{currentDay.notes}</span>
+                  </p>
+                ) : (
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '4px 0 0 0' }}>
+                    No focus notes added for this day yet.
                   </p>
                 )}
               </div>
 
-              <div style={{ display: 'flex', gap: '10px' }}>
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                 <button
                   onClick={handleOpenDayNote}
                   className="btn btn-secondary"
-                  style={{ padding: '8px 14px', fontSize: '0.85rem' }}
+                  style={{ padding: '8px 14px', fontSize: '0.825rem', borderRadius: '9999px' }}
                 >
                   <Edit3 size={14} />
-                  <span>{currentDay.notes ? 'Edit Notes' : 'Add Day Note'}</span>
+                  <span>{currentDay.notes ? 'Edit Notes' : 'Add Note'}</span>
                 </button>
 
                 <button
                   onClick={handleOpenAddModal}
                   className="btn btn-primary"
-                  style={{ padding: '8px 16px', fontSize: '0.85rem', fontWeight: 600 }}
+                  style={{ padding: '8px 16px', fontSize: '0.825rem', fontWeight: 700, borderRadius: '9999px' }}
                 >
                   <Plus size={16} />
                   <span>Add Activity</span>
@@ -890,7 +1200,7 @@ const ItineraryBuilder = () => {
           {/* ACTIVITIES LIST */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             {currentDayActivities.length === 0 ? (
-              <div className="glass-panel" style={{ padding: '48px 24px', textAlign: 'center' }}>
+              <div className="glass-panel" style={{ padding: '48px 24px', textAlign: 'center', borderRadius: '20px' }}>
                 <Compass size={40} style={{ color: 'var(--text-muted)', margin: '0 auto 12px auto', opacity: 0.6 }} />
                 <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
                   No activities planned for this day yet.
@@ -901,7 +1211,7 @@ const ItineraryBuilder = () => {
                 <button
                   onClick={handleOpenAddModal}
                   className="btn btn-primary"
-                  style={{ padding: '8px 20px', fontSize: '0.875rem' }}
+                  style={{ padding: '8px 20px', fontSize: '0.875rem', borderRadius: '9999px' }}
                 >
                   <Plus size={16} />
                   <span>Add Activity to Day {currentDay?.day_number || activeDayIndex + 1}</span>
@@ -924,13 +1234,14 @@ const ItineraryBuilder = () => {
                       disabled={actIndex === 0}
                       onClick={() => handleMoveSort(activity, 'up')}
                       style={{
-                        padding: '4px',
+                        padding: '5px',
                         background: 'rgba(255, 255, 255, 0.05)',
                         border: '1px solid var(--border-subtle)',
-                        borderRadius: '4px',
+                        borderRadius: '6px',
                         cursor: actIndex === 0 ? 'not-allowed' : 'pointer',
                         opacity: actIndex === 0 ? 0.3 : 0.8,
-                        color: '#fff'
+                        color: '#fff',
+                        transition: 'background-color 0.15s ease'
                       }}
                       title="Move Up"
                     >
@@ -941,13 +1252,14 @@ const ItineraryBuilder = () => {
                       disabled={actIndex === currentDayActivities.length - 1}
                       onClick={() => handleMoveSort(activity, 'down')}
                       style={{
-                        padding: '4px',
+                        padding: '5px',
                         background: 'rgba(255, 255, 255, 0.05)',
                         border: '1px solid var(--border-subtle)',
-                        borderRadius: '4px',
+                        borderRadius: '6px',
                         cursor: actIndex === currentDayActivities.length - 1 ? 'not-allowed' : 'pointer',
                         opacity: actIndex === currentDayActivities.length - 1 ? 0.3 : 0.8,
-                        color: '#fff'
+                        color: '#fff',
+                        transition: 'background-color 0.15s ease'
                       }}
                       title="Move Down"
                     >
@@ -975,8 +1287,8 @@ const ItineraryBuilder = () => {
               className="glass-panel"
               style={{
                 marginTop: '32px',
-                padding: '22px',
-                borderRadius: 'var(--radius-lg)',
+                padding: '24px',
+                borderRadius: '20px',
                 border: '1px solid var(--border-subtle)',
                 backgroundColor: 'rgba(15, 23, 42, 0.7)'
               }}
@@ -1009,7 +1321,7 @@ const ItineraryBuilder = () => {
                     onClick={refreshDayRecs}
                     disabled={loadingDayRecs}
                     className="btn btn-secondary"
-                    style={{ padding: '4px 10px', fontSize: '0.725rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                    style={{ padding: '5px 12px', fontSize: '0.725rem', display: 'inline-flex', alignItems: 'center', gap: '6px', borderRadius: '9999px' }}
                     title="Refresh suggestions"
                   >
                     <RefreshCw size={11} className={loadingDayRecs ? 'animate-spin' : ''} />
@@ -1019,7 +1331,7 @@ const ItineraryBuilder = () => {
               </div>
 
               {/* Category Pills */}
-              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '18px' }}>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' }}>
                 {[
                   { id: null, label: 'All' },
                   { id: 'food', label: 'Food' },
@@ -1034,7 +1346,7 @@ const ItineraryBuilder = () => {
                     key={cat.label}
                     onClick={() => setRecCategory(cat.id)}
                     className={recCategory === cat.id ? 'btn btn-primary' : 'btn btn-secondary'}
-                    style={{ padding: '4px 10px', fontSize: '0.725rem' }}
+                    style={{ padding: '5px 12px', fontSize: '0.75rem', borderRadius: '9999px' }}
                   >
                     {cat.label}
                   </button>
@@ -1045,7 +1357,7 @@ const ItineraryBuilder = () => {
               {loadingDayRecs ? (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
                   {[1, 2].map(i => (
-                    <div key={i} className="glass-panel" style={{ height: '360px', opacity: 0.5, animation: 'pulse 1.5s infinite' }} />
+                    <div key={i} className="glass-panel" style={{ height: '360px', opacity: 0.5, animation: 'pulse 1.5s infinite', borderRadius: '16px' }} />
                   ))}
                 </div>
               ) : dayRecs.length > 0 ? (
@@ -1060,7 +1372,7 @@ const ItineraryBuilder = () => {
                   ))}
                 </div>
               ) : (
-                <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                <div style={{ padding: '28px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
                   No additional recommendations matched this day's constraints. Try switching categories or expanding your filters.
                 </div>
               )}
@@ -1068,20 +1380,20 @@ const ItineraryBuilder = () => {
           )}
         </div>
 
-        {/* RIGHT / SIDEBAR (BUDGET & TRIP DETAILS) */}
+        {/* RIGHT / SIDEBAR (BUDGET, DATES & TRIP DETAILS) */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
-          {/* REAL BUDGET PANEL */}
-          <div className="glass-panel" style={{ padding: '24px' }}>
+          {/* 1. TRIP BUDGET PANEL */}
+          <div className="glass-panel" style={{ padding: '22px', borderRadius: '20px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Coins size={18} style={{ color: 'var(--primary)' }} />
-                <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>Trip Budget</h3>
+                <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0, color: '#ffffff' }}>Trip Budget</h3>
               </div>
               <button
                 onClick={() => setShowBudgetModal(true)}
                 className="btn btn-secondary"
-                style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                style={{ padding: '4px 10px', fontSize: '0.75rem', borderRadius: '9999px' }}
               >
                 {plannedBudget !== null ? 'Edit Budget' : 'Set Budget'}
               </button>
@@ -1125,7 +1437,7 @@ const ItineraryBuilder = () => {
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     fontSize: '0.875rem',
-                    paddingTop: '10px',
+                    paddingTop: '12px',
                     borderTop: '1px solid var(--border-subtle)'
                   }}>
                     <span style={{ color: 'var(--text-secondary)' }}>Remaining</span>
@@ -1141,138 +1453,76 @@ const ItineraryBuilder = () => {
             )}
           </div>
 
-          {/* TRIP DETAILS & COVER CARD */}
-          <div className="glass-panel" style={{ padding: '24px' }}>
-            <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: '0 0 16px 0' }}>Trip Metadata</h3>
-
-            {/* Cover Image Section */}
-            <div style={{ marginBottom: '16px' }}>
-              <label className="form-label" style={{ fontSize: '0.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>Cover Image</span>
-                {isUploadingCover && <span style={{ fontSize: '0.75rem', color: 'var(--primary)' }}>Uploading...</span>}
-              </label>
-
-              {trip?.cover_image_url ? (
-                <div style={{ position: 'relative', width: '100%', height: '110px', borderRadius: 'var(--radius-sm)', overflow: 'hidden', marginBottom: '8px', border: '1px solid var(--border-subtle)' }}>
-                  <img
-                    src={trip.cover_image_url}
-                    alt={trip.title || 'Cover'}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                  />
-                  {canEdit && (
-                    <button
-                      type="button"
-                      onClick={() => coverInputRef.current?.click()}
-                      disabled={isUploadingCover}
-                      className="btn"
-                      style={{
-                        position: 'absolute',
-                        bottom: '8px',
-                        right: '8px',
-                        padding: '4px 10px',
-                        fontSize: '0.75rem',
-                        backgroundColor: 'rgba(15, 23, 42, 0.85)',
-                        backdropFilter: 'blur(6px)',
-                        color: '#fff',
-                        border: '1px solid rgba(255,255,255,0.2)'
-                      }}
-                    >
-                      <Upload size={12} />
-                      <span>{isUploadingCover ? 'Uploading...' : 'Change Cover'}</span>
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div style={{
-                  padding: '14px',
-                  borderRadius: 'var(--radius-sm)',
-                  border: '1px dashed var(--border-subtle)',
-                  textAlign: 'center',
-                  marginBottom: '8px',
-                  backgroundColor: 'rgba(255, 255, 255, 0.02)'
-                }}>
-                  <ImageIcon size={24} style={{ color: 'var(--text-muted)', margin: '0 auto 6px auto' }} />
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                    No cover photo uploaded
-                  </div>
-                  {canEdit && (
-                    <button
-                      type="button"
-                      onClick={() => coverInputRef.current?.click()}
-                      disabled={isUploadingCover}
-                      className="btn btn-secondary"
-                      style={{ padding: '4px 12px', fontSize: '0.75rem' }}
-                    >
-                      <Upload size={12} />
-                      <span>{isUploadingCover ? 'Uploading...' : 'Upload Cover'}</span>
-                    </button>
-                  )}
-                </div>
+          {/* 2. TRIP DATES PANEL */}
+          <div className="glass-panel" style={{ padding: '22px', borderRadius: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Calendar size={16} style={{ color: 'var(--primary)' }} />
+                <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0, color: '#ffffff' }}>Trip Dates</h3>
+              </div>
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={handleOpenDatesModal}
+                  className="btn btn-secondary"
+                  style={{ padding: '4px 10px', fontSize: '0.75rem', borderRadius: '9999px' }}
+                >
+                  <Edit3 size={11} />
+                  <span>Edit Dates</span>
+                </button>
               )}
-
-              <input
-                ref={coverInputRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp,image/jpg"
-                style={{ display: 'none' }}
-                onChange={handleCoverFileChange}
-              />
             </div>
 
-            {/* Trip Dates Section */}
-            <div style={{ marginBottom: '16px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                <label className="form-label" style={{ fontSize: '0.8rem', margin: 0 }}>Trip Dates</label>
-                {canEdit && (
-                  <button
-                    type="button"
-                    onClick={handleOpenDatesModal}
-                    className="btn btn-secondary"
-                    style={{ padding: '2px 8px', fontSize: '0.75rem' }}
-                  >
-                    <Edit3 size={11} />
-                    <span>Edit Dates</span>
-                  </button>
+            <div style={{
+              padding: '12px 14px',
+              borderRadius: 'var(--radius-sm)',
+              backgroundColor: 'rgba(255, 255, 255, 0.03)',
+              border: '1px solid var(--border-subtle)',
+              fontSize: '0.85rem',
+              color: 'var(--text-primary)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px'
+            }}>
+              <Calendar size={15} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+              <div>
+                <div style={{ fontWeight: 600 }}>
+                  {trip?.start_date && trip?.end_date ? `${trip.start_date} — ${trip.end_date}` : 'Dates not set'}
+                </div>
+                {days.length > 0 && (
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                    Scheduled for {days.length} {days.length === 1 ? 'day' : 'days'}
+                  </div>
                 )}
               </div>
-              <div style={{
-                padding: '10px 12px',
-                borderRadius: 'var(--radius-sm)',
-                backgroundColor: 'rgba(255, 255, 255, 0.03)',
-                border: '1px solid var(--border-subtle)',
-                fontSize: '0.85rem',
-                color: 'var(--text-primary)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}>
-                <Calendar size={14} style={{ color: 'var(--primary)', flexShrink: 0 }} />
-                <span>
-                  {trip?.start_date && trip?.end_date
-                    ? `${trip.start_date} — ${trip.end_date} (${days.length} ${days.length === 1 ? 'Day' : 'Days'})`
-                    : 'No dates set'}
-                </span>
-              </div>
+            </div>
+          </div>
+
+          {/* 3. TRIP DETAILS PANEL */}
+          <div className="glass-panel" style={{ padding: '22px', borderRadius: '20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+              <Edit3 size={16} style={{ color: 'var(--primary)' }} />
+              <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0, color: '#ffffff' }}>Trip Details</h3>
             </div>
 
             <div className="form-group" style={{ marginBottom: '14px' }}>
-              <label className="form-label" style={{ fontSize: '0.8rem' }}>Trip Title</label>
+              <label className="form-label" style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Trip Title</label>
               <input
                 type="text"
                 className="form-input"
-                style={{ fontSize: '0.875rem', padding: '8px 12px' }}
+                style={{ fontSize: '0.875rem', padding: '10px 14px', borderRadius: '10px' }}
                 value={tripTitleInput}
                 onChange={(e) => setTripTitleInput(e.target.value)}
                 placeholder="Trip Title"
               />
             </div>
 
-            <div className="form-group" style={{ marginBottom: '16px' }}>
-              <label className="form-label" style={{ fontSize: '0.8rem' }}>Description</label>
+            <div className="form-group" style={{ marginBottom: '18px' }}>
+              <label className="form-label" style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Description</label>
               <textarea
                 rows={3}
                 className="form-textarea"
-                style={{ fontSize: '0.875rem', padding: '8px 12px' }}
+                style={{ fontSize: '0.875rem', padding: '10px 14px', borderRadius: '10px' }}
                 value={tripDescInput}
                 onChange={(e) => setTripDescInput(e.target.value)}
                 placeholder="Notes or description for this trip"
@@ -1282,10 +1532,10 @@ const ItineraryBuilder = () => {
             <button
               onClick={handleGlobalSave}
               className="btn btn-primary"
-              style={{ width: '100%', padding: '10px', fontSize: '0.875rem', fontWeight: 600 }}
+              style={{ width: '100%', padding: '11px', fontSize: '0.875rem', fontWeight: 700, borderRadius: '9999px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
             >
               <Save size={16} />
-              <span>{saveStatus}</span>
+              <span>{saveStatus === 'Save' ? 'Save Details' : saveStatus}</span>
             </button>
           </div>
 

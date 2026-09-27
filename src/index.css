@@ -1715,3 +1715,88 @@ button {
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 }
+
+/* ==================================================
+   ITINERARY BUILDER / EDIT TRIP WORKSPACE
+   ================================================== */
+.itinerary-builder-page {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 100px 32px 80px 32px;
+  box-sizing: border-box;
+}
+
+.itinerary-builder-grid {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 28px;
+  align-items: start;
+}
+
+.itinerary-hero-banner {
+  position: relative;
+  border-radius: 24px;
+  overflow: hidden;
+  margin-bottom: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7);
+  background-color: #0e1422;
+  min-height: 280px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.itinerary-day-tab {
+  padding: 10px 18px;
+  border-radius: 12px;
+  font-size: 0.875rem;
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 110px;
+}
+
+.itinerary-day-tab.active {
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.22) 0%, rgba(14, 165, 233, 0.08) 100%);
+  border-color: #0ea5e9;
+  color: #ffffff;
+  box-shadow: 0 0 20px rgba(14, 165, 233, 0.22);
+}
+
+.itinerary-day-tab:not(.active) {
+  background: rgba(15, 23, 42, 0.65);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+}
+
+.itinerary-day-tab:not(.active):hover {
+  background: rgba(26, 36, 60, 0.75);
+  border-color: rgba(255, 255, 255, 0.16);
+  color: var(--text-primary);
+}
+
+@media (max-width: 1024px) {
+  .itinerary-builder-page {
+    padding: 92px 20px 60px 20px;
+  }
+  
+  .itinerary-builder-grid {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+}
+
+@media (max-width: 640px) {
+  .itinerary-builder-page {
+    padding: 86px 14px 48px 14px;
+  }
+}
+
