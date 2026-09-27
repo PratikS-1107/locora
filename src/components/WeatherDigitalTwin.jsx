@@ -546,6 +546,25 @@ function WeatherDigitalTwinInner({
     return { maxKm, pixelRadius, pointsWithPixels };
   }, [geospatialPoints]);
 
+  // Inverse visual scale for markers and labels during radar zoom
+  // Separates spatial geographic zoom (which spreads coordinates) from marker visual scale.
+  // When zooming IN (zoomLevel > 1): markers, labels, and padding shrink to reduce visual overlap.
+  // When zooming OUT (zoomLevel < 1): markers and labels enlarge so they remain clear and readable.
+  const { netVisualScale, childScale } = useMemo(() => {
+    // netVisualScale is the target on-screen visual scale (clamped between 0.60 and 1.35)
+    // At zoomLevel = 1.0 (100%): netVisualScale = 1.00 (exact normal size)
+    // At zoomLevel = 1.5 (150%): netVisualScale = ~0.84 (smaller markers and labels)
+    // At zoomLevel = 2.0 (200%): netVisualScale = ~0.74 (even smaller, minimal overlap)
+    // At zoomLevel = 2.5 (250%): netVisualScale = ~0.67 (compact, readable)
+    // At zoomLevel = 0.75 (75%): netVisualScale = ~1.14 (larger markers and labels)
+    // At zoomLevel = 0.50 (50%): netVisualScale = ~1.35 (larger markers and labels, readable)
+    const net = Math.max(0.60, Math.min(1.35, Math.pow(1 / zoomLevel, 0.44)));
+    // Since the parent viewport already applies CSS scale(zoomLevel),
+    // child elements must scale by (netVisualScale / zoomLevel) so their effective on-screen scale is netVisualScale.
+    const child = Number((net / zoomLevel).toFixed(4));
+    return { netVisualScale: net, childScale: child };
+  }, [zoomLevel]);
+
   return (
     <div
       className="glass-panel"
@@ -1347,12 +1366,14 @@ function WeatherDigitalTwinInner({
                       position: 'absolute',
                       top: '50%',
                       left: '50%',
-                      transform: 'translate(-50%, -50%)',
+                      transform: `translate(-50%, -50%) scale(${childScale})`,
+                      transformOrigin: '50% 50%',
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
                       zIndex: 8,
-                      pointerEvents: 'none'
+                      pointerEvents: 'none',
+                      transition: isDragging ? 'none' : 'transform 0.12s ease-out'
                     }}
                   >
                     <div
@@ -1401,17 +1422,33 @@ function WeatherDigitalTwinInner({
                           position: 'absolute',
                           top: `calc(50% + ${exp.y}px)`,
                           left: `calc(50% + ${exp.x}px)`,
-                          transform: 'translate(-50%, -50%)',
+                          transform: `translate(-50%, -50%) scale(${childScale})`,
+                          transformOrigin: '50% 50%',
                           cursor: 'pointer',
                           display: 'flex',
                           flexDirection: 'column',
                           alignItems: 'center',
                           zIndex: isSelected ? 12 : 5,
-                          transition: 'transform 0.15s ease',
+                          transition: isDragging ? 'none' : 'transform 0.12s ease-out',
                           pointerEvents: 'auto'
                         }}
                         title={`${exp.name || exp.title} (${exp.distKm ? `${exp.distKm.toFixed(1)} km` : 'nearby'})`}
                       >
+                        {/* Generous invisible hit target to maintain easy selection at all zoom levels */}
+                        <div
+                          style={{
+                            position: 'absolute',
+                            top: '50%',
+                            left: '50%',
+                            transform: 'translate(-50%, -50%)',
+                            width: `${Math.round(38 / netVisualScale)}px`,
+                            height: `${Math.round(38 / netVisualScale)}px`,
+                            borderRadius: '50%',
+                            pointerEvents: 'auto',
+                            cursor: 'pointer'
+                          }}
+                        />
+
                         <div
                           style={{
                             width: isSelected ? '14px' : '10px',
@@ -1422,7 +1459,9 @@ function WeatherDigitalTwinInner({
                               ? `0 0 12px ${markerColor}, 0 0 20px ${markerColor}`
                               : `0 0 8px ${markerColor}`,
                             border: '1.5px solid #fff',
-                            transition: 'all 0.2s ease'
+                            transition: 'all 0.2s ease',
+                            position: 'relative',
+                            zIndex: 2
                           }}
                         />
                         <span
@@ -1438,7 +1477,9 @@ function WeatherDigitalTwinInner({
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             border: isSelected ? '1px solid var(--primary)' : '1px solid rgba(255, 255, 255, 0.08)',
-                            fontWeight: isSelected ? 700 : 500
+                            fontWeight: isSelected ? 700 : 500,
+                            position: 'relative',
+                            zIndex: 2
                           }}
                         >
                           {exp.name || exp.title}
