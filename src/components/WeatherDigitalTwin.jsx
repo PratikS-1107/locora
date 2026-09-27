@@ -98,6 +98,10 @@ function WeatherDigitalTwinInner({
   onAddToWishlist = null,
   wishlistIds = []
 }) {
+  const destName = destinationLocation?.destination || destinationLocation?.city || destinationLocation?.name || 'Selected Destination';
+  const destLat = destinationLocation?.latitude;
+  const destLng = destinationLocation?.longitude;
+
   const [isExpanded, setIsExpanded] = useState(true);
   const [activeTab, setActiveTab] = useState('simulation'); // 'simulation' | 'geospatial' | 'forecast'
   
@@ -115,9 +119,144 @@ function WeatherDigitalTwinInner({
   const [simulationResult, setSimulationResult] = useState(null);
   const [selectedMapItem, setSelectedMapItem] = useState(null);
 
-  const destName = destinationLocation?.destination || destinationLocation?.city || destinationLocation?.name || 'Selected Destination';
-  const destLat = destinationLocation?.latitude;
-  const destLng = destinationLocation?.longitude;
+  // Geospatial Radar Zoom & Viewport Pan State
+  const [zoomLevel, setZoomLevel] = useState(1.0);
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartRef = useRef({ mouseX: 0, mouseY: 0, panX: 0, panY: 0, hasMoved: false });
+  const radarContainerRef = useRef(null);
+
+  const MIN_ZOOM = 0.5;
+  const MAX_ZOOM = 3.0;
+
+  // Reset radar viewport when destination changes
+  useEffect(() => {
+    setZoomLevel(1.0);
+    setPanOffset({ x: 0, y: 0 });
+    setSelectedMapItem(null);
+  }, [destLat, destLng, destName]);
+
+  // Native non-passive wheel event listener ensuring e.preventDefault() blocks browser window scroll
+  useEffect(() => {
+    const container = radarContainerRef.current;
+    if (!container || activeTab !== 'geospatial') return;
+
+    const handleWheel = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const zoomFactor = e.deltaY < 0 ? 1.15 : 0.87;
+
+      setZoomLevel(prevZoom => {
+        const nextZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number((prevZoom * zoomFactor).toFixed(3))));
+        if (nextZoom === prevZoom) return prevZoom;
+
+        // Zoom toward mouse position
+        const rect = container.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left - rect.width / 2;
+        const mouseY = e.clientY - rect.top - rect.height / 2;
+
+        setPanOffset(prevPan => {
+          const ratio = nextZoom / prevZoom;
+          const newPanX = mouseX - (mouseX - prevPan.x) * ratio;
+          const newPanY = mouseY - (mouseY - prevPan.y) * ratio;
+          const maxPan = 180 * (nextZoom - 0.4);
+          return {
+            x: Math.max(-maxPan, Math.min(maxPan, newPanX)),
+            y: Math.max(-maxPan, Math.min(maxPan, newPanY))
+          };
+        });
+
+        return nextZoom;
+      });
+    };
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => {
+      container.removeEventListener('wheel', handleWheel);
+    };
+  }, [activeTab]);
+
+  // Touch pinch-to-zoom handler
+  useEffect(() => {
+    const container = radarContainerRef.current;
+    if (!container || activeTab !== 'geospatial') return;
+
+    let initialDist = null;
+    let initialZoom = 1.0;
+
+    const handleTouchStart = (e) => {
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        initialDist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+        initialZoom = zoomLevel;
+      }
+    };
+
+    const handleTouchMove = (e) => {
+      if (e.touches.length === 2 && initialDist) {
+        e.preventDefault();
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        const currentDist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+        const scale = currentDist / initialDist;
+        const nextZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number((initialZoom * scale).toFixed(3))));
+        setZoomLevel(nextZoom);
+      }
+    };
+
+    const handleTouchEnd = (e) => {
+      if (e.touches.length < 2) {
+        initialDist = null;
+      }
+    };
+
+    container.addEventListener('touchstart', handleTouchStart, { passive: false });
+    container.addEventListener('touchmove', handleTouchMove, { passive: false });
+    container.addEventListener('touchend', handleTouchEnd);
+
+    return () => {
+      container.removeEventListener('touchstart', handleTouchStart);
+      container.removeEventListener('touchmove', handleTouchMove);
+      container.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [activeTab, zoomLevel]);
+
+  const handleRadarMouseDown = (e) => {
+    if (e.button !== 0) return;
+    if (e.target.closest('[data-radar-control="true"]')) return;
+
+    dragStartRef.current = {
+      mouseX: e.clientX,
+      mouseY: e.clientY,
+      panX: panOffset.x,
+      panY: panOffset.y,
+      hasMoved: false
+    };
+    setIsDragging(true);
+  };
+
+  const handleRadarMouseMove = (e) => {
+    if (!isDragging) return;
+    const dx = e.clientX - dragStartRef.current.mouseX;
+    const dy = e.clientY - dragStartRef.current.mouseY;
+
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+      dragStartRef.current.hasMoved = true;
+    }
+
+    const maxPan = 180 * (zoomLevel - 0.4);
+    setPanOffset({
+      x: Math.max(-maxPan, Math.min(maxPan, dragStartRef.current.panX + dx)),
+      y: Math.max(-maxPan, Math.min(maxPan, dragStartRef.current.panY + dy))
+    });
+  };
+
+  const handleRadarMouseUp = () => {
+    setIsDragging(false);
+  };
 
   // Race condition prevention: only the latest request should update state
   const weatherRequestIdRef = useRef(0);
@@ -835,6 +974,11 @@ function WeatherDigitalTwinInner({
                 }
               `}</style>
               <div
+                ref={radarContainerRef}
+                onMouseDown={handleRadarMouseDown}
+                onMouseMove={handleRadarMouseMove}
+                onMouseUp={handleRadarMouseUp}
+                onMouseLeave={handleRadarMouseUp}
                 style={{
                   position: 'relative',
                   width: '100%',
@@ -847,177 +991,13 @@ function WeatherDigitalTwinInner({
                   flexDirection: 'column',
                   justifyContent: 'space-between',
                   padding: '16px',
-                  boxShadow: 'inset 0 0 40px rgba(0, 0, 0, 0.6)'
+                  boxShadow: 'inset 0 0 40px rgba(0, 0, 0, 0.6)',
+                  cursor: isDragging ? 'grabbing' : (zoomLevel > 1.0 ? 'grab' : 'crosshair'),
+                  userSelect: 'none'
                 }}
               >
-                {/* RADAR TACTICAL GRID OVERLAY */}
-                <div
-                  style={{
-                    position: 'absolute',
-                    inset: 0,
-                    backgroundImage: 'radial-gradient(circle at center, rgba(14, 165, 233, 0.08) 0%, transparent 70%), linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px)',
-                    backgroundSize: '100% 100%, 32px 32px, 32px 32px',
-                    pointerEvents: 'none'
-                  }}
-                />
-
-                {/* CONCENTRIC RADAR RANGE RINGS & CROSSHAIRS (SVG LAYER) */}
-                <svg
-                  style={{
-                    position: 'absolute',
-                    top: '50%',
-                    left: '50%',
-                    transform: 'translate(-50%, -50%)',
-                    width: `${radarScale.pixelRadius * 2 + 20}px`,
-                    height: `${radarScale.pixelRadius * 2 + 20}px`,
-                    pointerEvents: 'none',
-                    zIndex: 1
-                  }}
-                >
-                  {/* Outer Range Ring */}
-                  <circle
-                    cx="50%"
-                    cy="50%"
-                    r={radarScale.pixelRadius}
-                    fill="none"
-                    stroke="rgba(14, 165, 233, 0.22)"
-                    strokeWidth="1"
-                    strokeDasharray="4 3"
-                  />
-                  {/* Mid Range Ring */}
-                  <circle
-                    cx="50%"
-                    cy="50%"
-                    r={radarScale.pixelRadius * 0.66}
-                    fill="none"
-                    stroke="rgba(14, 165, 233, 0.16)"
-                    strokeWidth="1"
-                    strokeDasharray="3 3"
-                  />
-                  {/* Inner Range Ring */}
-                  <circle
-                    cx="50%"
-                    cy="50%"
-                    r={radarScale.pixelRadius * 0.33}
-                    fill="none"
-                    stroke="rgba(14, 165, 233, 0.12)"
-                    strokeWidth="1"
-                    strokeDasharray="2 2"
-                  />
-                  {/* Axis Crosshairs */}
-                  <line
-                    x1="50%"
-                    y1="4%"
-                    x2="50%"
-                    y2="96%"
-                    stroke="rgba(14, 165, 233, 0.14)"
-                    strokeWidth="1"
-                    strokeDasharray="2 4"
-                  />
-                  <line
-                    x1="4%"
-                    y1="50%"
-                    x2="96%"
-                    y2="50%"
-                    stroke="rgba(14, 165, 233, 0.14)"
-                    strokeWidth="1"
-                    strokeDasharray="2 4"
-                  />
-                </svg>
-
-                {/* RANGE DISTANCE ANNOTATIONS ON RINGS */}
-                <span
-                  style={{
-                    position: 'absolute',
-                    top: `calc(50% - ${radarScale.pixelRadius}px + 4px)`,
-                    left: 'calc(50% + 6px)',
-                    fontSize: '0.575rem',
-                    color: 'rgba(14, 165, 233, 0.65)',
-                    pointerEvents: 'none',
-                    zIndex: 2,
-                    fontFamily: 'monospace'
-                  }}
-                >
-                  {radarScale.maxKm.toFixed(1)} km
-                </span>
-                <span
-                  style={{
-                    position: 'absolute',
-                    top: `calc(50% - ${radarScale.pixelRadius * 0.66}px + 4px)`,
-                    left: 'calc(50% + 6px)',
-                    fontSize: '0.575rem',
-                    color: 'rgba(14, 165, 233, 0.45)',
-                    pointerEvents: 'none',
-                    zIndex: 2,
-                    fontFamily: 'monospace'
-                  }}
-                >
-                  {(radarScale.maxKm * 0.66).toFixed(1)} km
-                </span>
-
-                {/* CARDINAL DIRECTION MARKERS */}
-                <span style={{ position: 'absolute', top: `calc(50% - ${radarScale.pixelRadius + 14}px)`, left: '50%', transform: 'translateX(-50%)', fontSize: '0.625rem', fontWeight: 800, color: 'rgba(14, 165, 233, 0.6)', pointerEvents: 'none', zIndex: 2 }}>N</span>
-                <span style={{ position: 'absolute', top: `calc(50% + ${radarScale.pixelRadius + 2}px)`, left: '50%', transform: 'translateX(-50%)', fontSize: '0.625rem', fontWeight: 800, color: 'rgba(14, 165, 233, 0.4)', pointerEvents: 'none', zIndex: 2 }}>S</span>
-                <span style={{ position: 'absolute', top: '50%', left: `calc(50% - ${radarScale.pixelRadius + 14}px)`, transform: 'translateY(-50%)', fontSize: '0.625rem', fontWeight: 800, color: 'rgba(14, 165, 233, 0.4)', pointerEvents: 'none', zIndex: 2 }}>W</span>
-                <span style={{ position: 'absolute', top: '50%', left: `calc(50% + ${radarScale.pixelRadius + 5}px)`, transform: 'translateY(-50%)', fontSize: '0.625rem', fontWeight: 800, color: 'rgba(14, 165, 233, 0.4)', pointerEvents: 'none', zIndex: 2 }}>E</span>
-
-                {/* ROTATING TACTICAL RADAR BEAM SWEEP */}
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: '50%',
-                    left: '50%',
-                    width: `${radarScale.pixelRadius * 2}px`,
-                    height: `${radarScale.pixelRadius * 2}px`,
-                    borderRadius: '50%',
-                    pointerEvents: 'none',
-                    zIndex: 1,
-                    background: 'conic-gradient(from 0deg at 50% 50%, rgba(14, 165, 233, 0) 0deg, rgba(14, 165, 233, 0) 300deg, rgba(14, 165, 233, 0.12) 360deg)',
-                    animation: 'radarSweep 6s linear infinite'
-                  }}
-                />
-
-                {/* SIMULATED PRECIPITATION / WEATHER IMPACT RADAR CONTOUR */}
-                {simRain > 15 && (
-                  <div
-                    style={{
-                      position: 'absolute',
-                      top: '50%',
-                      left: '50%',
-                      transform: 'translate(-50%, -50%)',
-                      width: `${Math.min(radarScale.pixelRadius * 2, 80 + simRain * 1.5)}px`,
-                      height: `${Math.min(radarScale.pixelRadius * 2, 80 + simRain * 1.5)}px`,
-                      borderRadius: '50%',
-                      background: `radial-gradient(circle, rgba(14, 165, 233, ${Math.min(0.25, simRain / 400)}) 0%, rgba(99, 102, 241, 0.04) 60%, transparent 100%)`,
-                      border: `1px dashed rgba(56, 189, 248, ${Math.min(0.65, simRain / 120)})`,
-                      pointerEvents: 'none',
-                      animation: 'pulse 3s infinite ease-in-out',
-                      zIndex: 1
-                    }}
-                  />
-                )}
-
-                {/* THERMAL EXPOSURE BOUNDARY CONTOUR */}
-                {simTemp > 33 && (
-                  <div
-                    style={{
-                      position: 'absolute',
-                      top: '50%',
-                      left: '50%',
-                      transform: 'translate(-50%, -50%)',
-                      width: `${radarScale.pixelRadius * 1.6}px`,
-                      height: `${radarScale.pixelRadius * 1.6}px`,
-                      borderRadius: '50%',
-                      background: 'radial-gradient(circle, rgba(245, 158, 11, 0.08) 0%, transparent 75%)',
-                      border: '1px dashed rgba(245, 158, 11, 0.3)',
-                      pointerEvents: 'none',
-                      zIndex: 1
-                    }}
-                  />
-                )}
-
-                {/* MAP HEADER HUD */}
-                <div style={{ position: 'relative', zIndex: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                {/* MAP HEADER HUD (FIXED OVERLAY - DOES NOT SCALE WITH ZOOM) */}
+                <div style={{ position: 'relative', zIndex: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', pointerEvents: 'auto' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <MapPin size={16} style={{ color: 'var(--primary)', flexShrink: 0 }} />
                     <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#fff' }}>
@@ -1052,8 +1032,315 @@ function WeatherDigitalTwinInner({
                   </div>
                 </div>
 
-                {/* GEOSPATIAL EXPERIENCE PINS PROJECTION */}
-                <div style={{ position: 'relative', zIndex: 4, flex: 1, margin: '14px 0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {/* TACTICAL ZOOM CONTROLS HUD (FIXED OVERLAY - MATCHES DARK RADAR UI) */}
+                <div
+                  data-radar-control="true"
+                  style={{
+                    position: 'absolute',
+                    top: '48px',
+                    right: '16px',
+                    zIndex: 14,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '2px',
+                    backgroundColor: 'rgba(8, 14, 26, 0.9)',
+                    border: '1px solid rgba(14, 165, 233, 0.35)',
+                    borderRadius: '6px',
+                    padding: '3px',
+                    boxShadow: '0 4px 14px rgba(0, 0, 0, 0.6)',
+                    backdropFilter: 'blur(8px)',
+                    userSelect: 'none',
+                    pointerEvents: 'auto'
+                  }}
+                >
+                  {/* Zoom In Button */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setZoomLevel(prev => Math.min(MAX_ZOOM, Number((prev + 0.25).toFixed(2))));
+                    }}
+                    disabled={zoomLevel >= MAX_ZOOM}
+                    title="Zoom In (+)"
+                    aria-label="Zoom In"
+                    style={{
+                      width: '24px',
+                      height: '24px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: 'transparent',
+                      border: 'none',
+                      borderRadius: '4px',
+                      color: zoomLevel >= MAX_ZOOM ? 'rgba(255, 255, 255, 0.25)' : 'var(--primary)',
+                      fontSize: '15px',
+                      fontWeight: 700,
+                      cursor: zoomLevel >= MAX_ZOOM ? 'not-allowed' : 'pointer',
+                      transition: 'background-color 0.15s ease'
+                    }}
+                    onMouseEnter={(e) => { if (zoomLevel < MAX_ZOOM) e.currentTarget.style.backgroundColor = 'rgba(14, 165, 233, 0.18)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                  >
+                    +
+                  </button>
+
+                  {/* Zoom Readout */}
+                  <span
+                    style={{
+                      fontSize: '0.58rem',
+                      fontFamily: 'monospace',
+                      fontWeight: 600,
+                      color: 'rgba(14, 165, 233, 0.85)',
+                      padding: '1px 2px',
+                      textAlign: 'center',
+                      minWidth: '28px'
+                    }}
+                  >
+                    {Math.round(zoomLevel * 100)}%
+                  </span>
+
+                  {/* Zoom Out Button */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setZoomLevel(prev => Math.max(MIN_ZOOM, Number((prev - 0.25).toFixed(2))));
+                    }}
+                    disabled={zoomLevel <= MIN_ZOOM}
+                    title="Zoom Out (−)"
+                    aria-label="Zoom Out"
+                    style={{
+                      width: '24px',
+                      height: '24px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: 'transparent',
+                      border: 'none',
+                      borderRadius: '4px',
+                      color: zoomLevel <= MIN_ZOOM ? 'rgba(255, 255, 255, 0.25)' : 'var(--primary)',
+                      fontSize: '15px',
+                      fontWeight: 700,
+                      cursor: zoomLevel <= MIN_ZOOM ? 'not-allowed' : 'pointer',
+                      transition: 'background-color 0.15s ease'
+                    }}
+                    onMouseEnter={(e) => { if (zoomLevel > MIN_ZOOM) e.currentTarget.style.backgroundColor = 'rgba(14, 165, 233, 0.18)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                  >
+                    −
+                  </button>
+
+                  {/* Reset Button (visible when zoomed or panned) */}
+                  {(zoomLevel !== 1.0 || panOffset.x !== 0 || panOffset.y !== 0) && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setZoomLevel(1.0);
+                        setPanOffset({ x: 0, y: 0 });
+                      }}
+                      title="Reset View"
+                      aria-label="Reset View"
+                      style={{
+                        marginTop: '2px',
+                        padding: '2px 5px',
+                        fontSize: '0.55rem',
+                        fontWeight: 600,
+                        backgroundColor: 'rgba(14, 165, 233, 0.15)',
+                        border: '1px solid rgba(14, 165, 233, 0.4)',
+                        borderRadius: '3px',
+                        color: '#fff',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                        textTransform: 'uppercase'
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(14, 165, 233, 0.3)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(14, 165, 233, 0.15)'; }}
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
+
+                {/* ZOOMABLE SPATIAL VIEWPORT (SCALES & PANS ALL RADAR SPATIAL ELEMENTS TOGETHER) */}
+                <div
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    transform: `scale(${zoomLevel}) translate(${panOffset.x}px, ${panOffset.y}px)`,
+                    transformOrigin: '50% 50%',
+                    transition: isDragging ? 'none' : 'transform 0.12s cubic-bezier(0.2, 0, 0, 1)',
+                    pointerEvents: 'auto',
+                    zIndex: 2
+                  }}
+                >
+                  {/* RADAR TACTICAL GRID OVERLAY */}
+                  <div
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      backgroundImage: 'radial-gradient(circle at center, rgba(14, 165, 233, 0.08) 0%, transparent 70%), linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px)',
+                      backgroundSize: '100% 100%, 32px 32px, 32px 32px',
+                      pointerEvents: 'none'
+                    }}
+                  />
+
+                  {/* CONCENTRIC RADAR RANGE RINGS & CROSSHAIRS (SVG LAYER) */}
+                  <svg
+                    style={{
+                      position: 'absolute',
+                      top: '50%',
+                      left: '50%',
+                      transform: 'translate(-50%, -50%)',
+                      width: `${radarScale.pixelRadius * 2 + 20}px`,
+                      height: `${radarScale.pixelRadius * 2 + 20}px`,
+                      pointerEvents: 'none',
+                      zIndex: 1
+                    }}
+                  >
+                    {/* Outer Range Ring */}
+                    <circle
+                      cx="50%"
+                      cy="50%"
+                      r={radarScale.pixelRadius}
+                      fill="none"
+                      stroke="rgba(14, 165, 233, 0.22)"
+                      strokeWidth="1"
+                      strokeDasharray="4 3"
+                    />
+                    {/* Mid Range Ring */}
+                    <circle
+                      cx="50%"
+                      cy="50%"
+                      r={radarScale.pixelRadius * 0.66}
+                      fill="none"
+                      stroke="rgba(14, 165, 233, 0.16)"
+                      strokeWidth="1"
+                      strokeDasharray="3 3"
+                    />
+                    {/* Inner Range Ring */}
+                    <circle
+                      cx="50%"
+                      cy="50%"
+                      r={radarScale.pixelRadius * 0.33}
+                      fill="none"
+                      stroke="rgba(14, 165, 233, 0.12)"
+                      strokeWidth="1"
+                      strokeDasharray="2 2"
+                    />
+                    {/* Axis Crosshairs */}
+                    <line
+                      x1="50%"
+                      y1="4%"
+                      x2="50%"
+                      y2="96%"
+                      stroke="rgba(14, 165, 233, 0.14)"
+                      strokeWidth="1"
+                      strokeDasharray="2 4"
+                    />
+                    <line
+                      x1="4%"
+                      y1="50%"
+                      x2="96%"
+                      y2="50%"
+                      stroke="rgba(14, 165, 233, 0.14)"
+                      strokeWidth="1"
+                      strokeDasharray="2 4"
+                    />
+                  </svg>
+
+                  {/* RANGE DISTANCE ANNOTATIONS ON RINGS */}
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: `calc(50% - ${radarScale.pixelRadius}px + 4px)`,
+                      left: 'calc(50% + 6px)',
+                      fontSize: '0.575rem',
+                      color: 'rgba(14, 165, 233, 0.65)',
+                      pointerEvents: 'none',
+                      zIndex: 2,
+                      fontFamily: 'monospace'
+                    }}
+                  >
+                    {radarScale.maxKm.toFixed(1)} km
+                  </span>
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: `calc(50% - ${radarScale.pixelRadius * 0.66}px + 4px)`,
+                      left: 'calc(50% + 6px)',
+                      fontSize: '0.575rem',
+                      color: 'rgba(14, 165, 233, 0.45)',
+                      pointerEvents: 'none',
+                      zIndex: 2,
+                      fontFamily: 'monospace'
+                    }}
+                  >
+                    {(radarScale.maxKm * 0.66).toFixed(1)} km
+                  </span>
+
+                  {/* CARDINAL DIRECTION MARKERS */}
+                  <span style={{ position: 'absolute', top: `calc(50% - ${radarScale.pixelRadius + 14}px)`, left: '50%', transform: 'translateX(-50%)', fontSize: '0.625rem', fontWeight: 800, color: 'rgba(14, 165, 233, 0.6)', pointerEvents: 'none', zIndex: 2 }}>N</span>
+                  <span style={{ position: 'absolute', top: `calc(50% + ${radarScale.pixelRadius + 2}px)`, left: '50%', transform: 'translateX(-50%)', fontSize: '0.625rem', fontWeight: 800, color: 'rgba(14, 165, 233, 0.4)', pointerEvents: 'none', zIndex: 2 }}>S</span>
+                  <span style={{ position: 'absolute', top: '50%', left: `calc(50% - ${radarScale.pixelRadius + 14}px)`, transform: 'translateY(-50%)', fontSize: '0.625rem', fontWeight: 800, color: 'rgba(14, 165, 233, 0.4)', pointerEvents: 'none', zIndex: 2 }}>W</span>
+                  <span style={{ position: 'absolute', top: '50%', left: `calc(50% + ${radarScale.pixelRadius + 5}px)`, transform: 'translateY(-50%)', fontSize: '0.625rem', fontWeight: 800, color: 'rgba(14, 165, 233, 0.4)', pointerEvents: 'none', zIndex: 2 }}>E</span>
+
+                  {/* ROTATING TACTICAL RADAR BEAM SWEEP */}
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '50%',
+                      left: '50%',
+                      width: `${radarScale.pixelRadius * 2}px`,
+                      height: `${radarScale.pixelRadius * 2}px`,
+                      borderRadius: '50%',
+                      pointerEvents: 'none',
+                      zIndex: 1,
+                      background: 'conic-gradient(from 0deg at 50% 50%, rgba(14, 165, 233, 0) 0deg, rgba(14, 165, 233, 0) 300deg, rgba(14, 165, 233, 0.12) 360deg)',
+                      animation: 'radarSweep 6s linear infinite'
+                    }}
+                  />
+
+                  {/* SIMULATED PRECIPITATION / WEATHER IMPACT RADAR CONTOUR */}
+                  {simRain > 15 && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: '50%',
+                        left: '50%',
+                        transform: 'translate(-50%, -50%)',
+                        width: `${Math.min(radarScale.pixelRadius * 2, 80 + simRain * 1.5)}px`,
+                        height: `${Math.min(radarScale.pixelRadius * 2, 80 + simRain * 1.5)}px`,
+                        borderRadius: '50%',
+                        background: `radial-gradient(circle, rgba(14, 165, 233, ${Math.min(0.25, simRain / 400)}) 0%, rgba(99, 102, 241, 0.04) 60%, transparent 100%)`,
+                        border: `1px dashed rgba(56, 189, 248, ${Math.min(0.65, simRain / 120)})`,
+                        pointerEvents: 'none',
+                        animation: 'pulse 3s infinite ease-in-out',
+                        zIndex: 1
+                      }}
+                    />
+                  )}
+
+                  {/* THERMAL EXPOSURE BOUNDARY CONTOUR */}
+                  {simTemp > 33 && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: '50%',
+                        left: '50%',
+                        transform: 'translate(-50%, -50%)',
+                        width: `${radarScale.pixelRadius * 1.6}px`,
+                        height: `${radarScale.pixelRadius * 1.6}px`,
+                        borderRadius: '50%',
+                        background: 'radial-gradient(circle, rgba(245, 158, 11, 0.08) 0%, transparent 75%)',
+                        border: '1px dashed rgba(245, 158, 11, 0.3)',
+                        pointerEvents: 'none',
+                        zIndex: 1
+                      }}
+                    />
+                  )}
+
                   {/* Destination Center Pin */}
                   <div
                     style={{
@@ -1064,7 +1351,8 @@ function WeatherDigitalTwinInner({
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
-                      zIndex: 8
+                      zIndex: 8,
+                      pointerEvents: 'none'
                     }}
                   >
                     <div
@@ -1103,7 +1391,12 @@ function WeatherDigitalTwinInner({
                     return (
                       <div
                         key={exp.id || exp.placeId || i}
-                        onClick={() => setSelectedMapItem(exp)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!dragStartRef.current.hasMoved) {
+                            setSelectedMapItem(exp);
+                          }
+                        }}
                         style={{
                           position: 'absolute',
                           top: `calc(50% + ${exp.y}px)`,
@@ -1114,7 +1407,8 @@ function WeatherDigitalTwinInner({
                           flexDirection: 'column',
                           alignItems: 'center',
                           zIndex: isSelected ? 12 : 5,
-                          transition: 'transform 0.15s ease'
+                          transition: 'transform 0.15s ease',
+                          pointerEvents: 'auto'
                         }}
                         title={`${exp.name || exp.title} (${exp.distKm ? `${exp.distKm.toFixed(1)} km` : 'nearby'})`}
                       >
@@ -1154,12 +1448,12 @@ function WeatherDigitalTwinInner({
                   })}
                 </div>
 
-                {/* BOTTOM STATUS / SELECTED PIN DETAILS HUD */}
+                {/* BOTTOM STATUS / SELECTED PIN DETAILS HUD (FIXED OVERLAY - DOES NOT SCALE WITH ZOOM) */}
                 {selectedMapItem ? (
                   <div
                     style={{
                       position: 'relative',
-                      zIndex: 10,
+                      zIndex: 12,
                       padding: '8px 14px',
                       backgroundColor: 'rgba(15, 23, 42, 0.95)',
                       borderRadius: '6px',
@@ -1169,7 +1463,8 @@ function WeatherDigitalTwinInner({
                       justifyContent: 'space-between',
                       gap: '12px',
                       fontSize: '0.75rem',
-                      flexWrap: 'wrap'
+                      flexWrap: 'wrap',
+                      pointerEvents: 'auto'
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
@@ -1220,14 +1515,15 @@ function WeatherDigitalTwinInner({
                   <div
                     style={{
                       position: 'relative',
-                      zIndex: 2,
+                      zIndex: 12,
                       padding: '6px 12px',
                       backgroundColor: 'rgba(15, 23, 42, 0.7)',
                       borderRadius: '6px',
                       border: '1px solid rgba(255, 255, 255, 0.06)',
                       textAlign: 'center',
                       fontSize: '0.725rem',
-                      color: 'var(--text-muted)'
+                      color: 'var(--text-muted)',
+                      pointerEvents: 'auto'
                     }}
                   >
                     No nearby geospatial data available for this sector
@@ -1236,12 +1532,13 @@ function WeatherDigitalTwinInner({
                   <div
                     style={{
                       position: 'relative',
-                      zIndex: 2,
+                      zIndex: 12,
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center',
                       fontSize: '0.675rem',
-                      color: 'var(--text-muted)'
+                      color: 'var(--text-muted)',
+                      pointerEvents: 'auto'
                     }}
                   >
                     <span>Sector coverage: {radarScale.maxKm.toFixed(1)} km radius</span>
