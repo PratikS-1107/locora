@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Modal from './Modal';
 import { getTripItinerary } from '../services/api';
-import { Clock, MapPin, Calendar, Plus, Sparkles, X, Compass, Coins, Check, Heart } from 'lucide-react';
+import { Clock, MapPin, Calendar, Plus, X, Compass, Coins, Check, Heart } from 'lucide-react';
 
 const ViewItineraryModal = ({
   isOpen,

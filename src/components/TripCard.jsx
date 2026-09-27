@@ -12,8 +12,7 @@ import {
   Check,
   MoreVertical,
   Heart,
-  Compass,
-  Sparkles
+  Compass
 } from 'lucide-react';
 
 const TripCard = ({

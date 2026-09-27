@@ -16,7 +16,6 @@ import ConvertTemplateModal from '../components/ConvertTemplateModal';
 import {
   Plus,
   Calendar,
-  Sparkles,
   CheckCircle2,
   AlertTriangle,
   Search,
@@ -340,18 +339,7 @@ const MyTrips = () => {
             >
               My Trips
             </h1>
-            <p
-              style={{
-                fontSize: 'clamp(0.9rem, 1.1vw, 1rem)',
-                color: 'rgba(226, 232, 240, 0.82)',
-                margin: 0,
-                fontWeight: 400,
-                lineHeight: 1.5,
-                textShadow: '0 1px 8px rgba(0, 0, 0, 0.6)'
-              }}
-            >
-              Curated travel itineraries, active journeys, and upcoming expeditions.
-            </p>
+
           </div>
 
           <button
@@ -1212,8 +1200,7 @@ const MyTrips = () => {
                   marginBottom: '20px'
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Sparkles size={18} style={{ color: '#c084fc' }} />
+                <div>
                   <h2
                     style={{
                       fontFamily: 'var(--font-heading)',

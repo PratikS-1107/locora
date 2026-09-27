@@ -19,7 +19,6 @@ import { formatDuration, getTodayLocalDateString } from '../utils/formatters';
 import ExperienceCard from '../components/ExperienceCard';
 import WeatherDigitalTwin from '../components/WeatherDigitalTwin';
 import {
-  Sparkles,
   MapPin,
   Clock,
   RefreshCw,
@@ -788,7 +787,7 @@ const Discover = () => {
           <div>
             <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '6px', flexWrap: 'wrap' }}>
               <span className="badge badge-purple">
-                <Sparkles size={11} /> Context-Aware Discovery
+                Context-Aware Discovery
               </span>
               {hasGoogleKey && (
                 <span className="badge badge-primary">
@@ -1278,7 +1277,6 @@ const Discover = () => {
         gap: '12px'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <Sparkles size={18} style={{ color: 'var(--accent-purple)', flexShrink: 0 }} />
           <div>
             <span style={{ fontSize: '0.825rem', fontWeight: 700, color: 'var(--text-primary)' }}>
               {locationMode === 'active_trip'

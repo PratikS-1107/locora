@@ -14,14 +14,12 @@ import {
   X,
   MapPin,
   Heart,
-  Sparkles,
   Eye,
   Plus,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  Calendar,
-  Compass
+  Calendar
 } from 'lucide-react';
 
 // 20 Curated Pre-Planned Trips matching the Explore page screenshot
@@ -1120,9 +1118,8 @@ const Explore = () => {
             marginBottom: '24px'
           }}
         >
-          {/* Section Title with Purple Sparkle */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Sparkles size={18} style={{ color: '#c084fc' }} />
+          {/* Section Title */}
+          <div>
             <h2
               style={{
                 fontFamily: 'var(--font-heading)',

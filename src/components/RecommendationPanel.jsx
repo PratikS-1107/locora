@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  Sparkles,
   MapPin,
   Clock,
   Coins,
@@ -585,8 +584,7 @@ const RecommendationPanel = ({
 
           {/* Category Selector */}
           <div style={{ gridColumn: 'span 1' }}>
-            <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '6px' }}>
-              <Sparkles size={12} style={{ color: 'var(--accent-purple)' }} />
+            <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', marginBottom: '6px' }}>
               <span>Category / Interest</span>
             </label>
             <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>

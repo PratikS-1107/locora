@@ -25,7 +25,6 @@ import {
   Copy,
   Heart,
   Clock,
-  Sparkles,
   Users,
   Compass,
   AlertCircle,

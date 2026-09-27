@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Modal from './Modal';
-import { Compass, Sparkles, AlertCircle, Coins } from 'lucide-react';
+import { Compass, AlertCircle, Coins } from 'lucide-react';
 import { getTodayLocalDateString } from '../utils/formatters';
 
 const getDefaultStartDate = () => {
@@ -215,7 +215,6 @@ const ConvertTemplateModal = ({
         <div style={{
           display: 'flex',
           alignItems: 'center',
-          gap: '8px',
           padding: '10px 14px',
           borderRadius: '8px',
           background: 'rgba(0, 196, 140, 0.08)',
@@ -223,7 +222,6 @@ const ConvertTemplateModal = ({
           fontSize: '0.8rem',
           color: '#00c48c'
         }}>
-          <Sparkles size={14} style={{ flexShrink: 0 }} />
           <span>
             Your itinerary days and activities will be copied and dated automatically.
           </span>

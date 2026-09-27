@@ -39,13 +39,13 @@ import {
   Compass,
   Coins,
   Lock,
+  Globe,
   Eye,
   Info,
   ChevronUp,
   ChevronDown,
   Upload,
   Image as ImageIcon,
-  Sparkles,
   RefreshCw
 } from 'lucide-react';
 
@@ -926,7 +926,7 @@ const ItineraryBuilder = () => {
                   gap: '6px'
                 }}
               >
-                {trip.is_public ? <Sparkles size={12} /> : <Lock size={12} />}
+                {trip.is_public ? <Globe size={12} /> : <Lock size={12} />}
                 <span>{trip.is_public ? 'Public Itinerary' : 'Private Trip'}</span>
               </span>
 
@@ -1296,8 +1296,7 @@ const ItineraryBuilder = () => {
               {/* Header with Context Badges */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '14px', marginBottom: '16px' }}>
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                    <Sparkles size={18} style={{ color: 'var(--accent-purple)' }} />
+                  <div style={{ marginBottom: '4px' }}>
                     <h3 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
                       Suggested for Day {currentDay.day_number} in {trip.destination || 'Area'}
                     </h3>

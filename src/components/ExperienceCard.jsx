@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, MapPin, Navigation, Sparkles, CheckCircle2, Star, ExternalLink, Car, ImageOff, Heart, Plus } from 'lucide-react';
+import { Clock, MapPin, Navigation, CheckCircle2, Star, ExternalLink, Car, ImageOff, Heart, Plus } from 'lucide-react';
 import { formatDuration } from '../utils/formatters';
 
 const ExperienceCard = ({
@@ -152,10 +152,9 @@ const ExperienceCard = ({
             borderRadius: '6px',
             display: 'inline-flex',
             alignItems: 'center',
-            gap: '4px',
             boxShadow: '0 2px 8px rgba(139, 92, 246, 0.4)'
           }}>
-            <Sparkles size={11} /> {category}
+            {category}
           </span>
         </div>
 

@@ -9,7 +9,6 @@ import {
   Thermometer,
   Clock,
   Compass,
-  Sparkles,
   AlertTriangle,
   CheckCircle2,
   RefreshCw,
@@ -285,22 +284,7 @@ function WeatherDigitalTwinInner({
           background: 'linear-gradient(90deg, rgba(14, 165, 233, 0.08) 0%, rgba(139, 92, 246, 0.05) 100%)'
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div
-            style={{
-              width: '36px',
-              height: '36px',
-              borderRadius: '10px',
-              background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.25) 0%, rgba(99, 102, 241, 0.25) 100%)',
-              border: '1px solid rgba(56, 189, 248, 0.4)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'var(--primary)'
-            }}
-          >
-            <Sparkles size={18} />
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#fff', letterSpacing: '-0.02em' }}>

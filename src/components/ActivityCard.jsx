@@ -1,5 +1,5 @@
 import React from 'react';
-import { MapPin, Trash2, Edit2, Sparkles, Navigation, ArrowUp, ArrowDown, Clock, Plus } from 'lucide-react';
+import { MapPin, Trash2, Edit2, Navigation, ArrowUp, ArrowDown, Clock, Plus } from 'lucide-react';
 import { formatDuration } from '../utils/formatters';
 
 const ActivityCard = ({
@@ -108,11 +108,10 @@ const ActivityCard = ({
                   padding: '2px 8px',
                   borderRadius: '9999px',
                   display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '4px'
+                  alignItems: 'center'
                 }}
               >
-                <Sparkles size={10} /> AI Match
+                AI Match
               </span>
             )}
 

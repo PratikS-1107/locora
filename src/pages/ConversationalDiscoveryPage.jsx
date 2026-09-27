@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { getUserTrips } from '../services/api';
 import ConversationalDiscovery from '../components/ConversationalDiscovery';
-import { MessageCircle, Sparkles, MapPin, Compass } from 'lucide-react';
+import { MessageCircle, MapPin, Compass } from 'lucide-react';
 
 const ConversationalDiscoveryPage = () => {
   const { user } = useAuth();
@@ -93,7 +93,6 @@ const ConversationalDiscoveryPage = () => {
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '6px',
               padding: '4px 14px',
               borderRadius: '9999px',
               background: 'rgba(14, 165, 233, 0.12)',
@@ -106,7 +105,6 @@ const ConversationalDiscoveryPage = () => {
               marginBottom: '12px'
             }}
           >
-            <Sparkles size={12} />
             <span>AI Travel Companion</span>
           </div>
 

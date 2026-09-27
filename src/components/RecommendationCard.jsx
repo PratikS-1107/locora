@@ -3,7 +3,6 @@ import {
   Clock,
   MapPin,
   Navigation,
-  Compass,
   CheckCircle2,
   Star,
   ExternalLink,
@@ -153,7 +152,7 @@ const RecommendationCard = ({
         {/* Category Badge */}
         <div style={{ position: 'absolute', top: '12px', right: '12px' }}>
           <span className="badge badge-purple" style={{ backdropFilter: 'blur(10px)', fontSize: '0.72rem', fontWeight: 600 }}>
-            <Compass size={11} /> {category}
+            {category}
           </span>
         </div>
 
@@ -174,7 +173,7 @@ const RecommendationCard = ({
               gap: '4px'
             }}>
               <Star size={11} fill="#fbbf24" style={{ color: '#fbbf24' }} />
-              <span>★ {ratingVal} {reviewCountStr}</span>
+              <span>{ratingVal} {reviewCountStr}</span>
             </span>
           ) : (
             <span style={{
@@ -247,7 +246,7 @@ const RecommendationCard = ({
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
               <Navigation size={12} style={{ color: 'var(--text-muted)' }} />
-              <span>📍 {distanceLabel}</span>
+              <span>{distanceLabel}</span>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>

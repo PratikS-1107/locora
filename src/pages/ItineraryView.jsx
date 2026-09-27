@@ -18,7 +18,6 @@ import {
   Compass,
   AlertTriangle,
   Info,
-  Sparkles,
   DollarSign,
   ChevronRight,
   Upload,
