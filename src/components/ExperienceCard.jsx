@@ -8,7 +8,8 @@ const ExperienceCard = ({
   onToggleWishlist,
   isAdded = false,
   isWishlisted = false,
-  availableTimeLabel = 'Flexible'
+  availableTimeLabel = 'Flexible',
+  weatherSignal = null
 }) => {
   const [imgError, setImgError] = useState(false);
 
@@ -217,6 +218,25 @@ const ExperienceCard = ({
       {/* Details Area */}
       <div style={{ padding: '18px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
         <div>
+          {weatherSignal && (
+            <div style={{ marginBottom: '8px' }}>
+              <span style={{
+                backgroundColor: weatherSignal.type === 'sheltered' ? 'rgba(16, 185, 129, 0.15)' : (weatherSignal.type === 'exposed' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(14, 165, 233, 0.12)'),
+                color: weatherSignal.type === 'sheltered' ? '#34d399' : (weatherSignal.type === 'exposed' ? '#fca5a5' : '#38bdf8'),
+                border: `1px solid ${weatherSignal.type === 'sheltered' ? 'rgba(16, 185, 129, 0.35)' : (weatherSignal.type === 'exposed' ? 'rgba(239, 68, 68, 0.35)' : 'rgba(14, 165, 233, 0.3)')}`,
+                fontSize: '0.675rem',
+                fontWeight: 700,
+                padding: '2px 8px',
+                borderRadius: '4px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}>
+                {weatherSignal.label}
+              </span>
+            </div>
+          )}
+
           <h3 style={{ fontSize: '1.1rem', fontWeight: 800, margin: '0 0 6px 0', color: '#ffffff', lineHeight: 1.3, fontFamily: 'var(--font-heading)' }}>
             {title}
           </h3>

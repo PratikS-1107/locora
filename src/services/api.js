@@ -818,6 +818,69 @@ export const getPlaceDetails = async (placeId) => {
   }
 };
 
+// --- WEATHER-DRIVEN DIGITAL TWIN SERVICES (Server-Side OpenWeather & Simulation Proxy) ---
+export const fetchLiveDestinationWeather = async ({ latitude, longitude, destination }) => {
+  try {
+    const res = await fetch('/api/weather/live', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ latitude, longitude, destination })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return data;
+    }
+    return {
+      success: false,
+      error: 'Weather data temporarily unavailable.',
+      isUnavailable: true
+    };
+  } catch (err) {
+    console.warn('fetchLiveDestinationWeather error:', err);
+    return {
+      success: false,
+      error: 'Weather data temporarily unavailable.',
+      isUnavailable: true
+    };
+  }
+};
+
+export const simulateWeatherDigitalTwin = async ({
+  destination,
+  weather,
+  scenario = {},
+  experiences = [],
+  activeTrip = null
+}) => {
+  try {
+    const res = await fetch('/api/weather/digital-twin/simulate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        destination,
+        weather,
+        scenario,
+        experiences,
+        activeTrip
+      })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return data;
+    }
+    return {
+      success: false,
+      error: 'Digital Twin simulation temporarily unavailable.'
+    };
+  } catch (err) {
+    console.warn('simulateWeatherDigitalTwin error:', err);
+    return {
+      success: false,
+      error: 'Digital Twin simulation network error.'
+    };
+  }
+};
+
 /**
  * Check if the specified date range overlaps with any existing personal trip for the user.
  * Overlap condition:

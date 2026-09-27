@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import { generateGeminiResponse } from './services/gemini.js';
 import { processSmartRecommendations } from './services/recommendationEngine.js';
 import { extractTravelIntentWithNvidia, formatConversationalReplyWithNvidia } from './services/conversationalEngine.js';
+import { getLiveDestinationWeather, simulateDigitalTwinScenario } from './services/weatherDigitalTwin.js';
 
 dotenv.config();
 
@@ -559,6 +560,72 @@ router.post('/places/details', async (req, res) => {
   } catch (err) {
     console.error('Error in places details endpoint:', err);
     return res.status(500).json({ success: false, error: 'Unable to retrieve place details right now.' });
+  }
+});
+
+// POST /api/weather/live - Real-time destination weather from OpenWeather with public signals
+router.post('/weather/live', async (req, res) => {
+  try {
+    const { latitude, longitude, destination } = req.body || {};
+    const lat = Number(latitude);
+    const lng = Number(longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)
+      || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      return res.status(400).json({
+        success: false,
+        error: 'Valid destination coordinates are required for weather.'
+      });
+    }
+    const weatherData = await getLiveDestinationWeather({ latitude, longitude, destination });
+    return res.json(weatherData);
+  } catch (err) {
+    console.error('Error in /api/weather/live:', err);
+    return res.status(200).json({
+      success: false,
+      error: 'Weather data temporarily unavailable.',
+      isUnavailable: true
+    });
+  }
+});
+
+// GET /api/weather/live - Query param support for live destination weather
+router.get('/weather/live', async (req, res) => {
+  try {
+    const { lat, lng, latitude, longitude, destination } = req.query || {};
+    const weatherData = await getLiveDestinationWeather({
+      latitude: latitude || lat,
+      longitude: longitude || lng,
+      destination
+    });
+    return res.json(weatherData);
+  } catch (err) {
+    console.error('Error in GET /api/weather/live:', err);
+    return res.status(200).json({
+      success: false,
+      error: 'Weather data temporarily unavailable.',
+      isUnavailable: true
+    });
+  }
+});
+
+// POST /api/weather/digital-twin/simulate - Digital Twin What-If Simulation Engine
+router.post('/weather/digital-twin/simulate', async (req, res) => {
+  try {
+    const { destination, weather, scenario, experiences, activeTrip } = req.body || {};
+    const simulationResult = await simulateDigitalTwinScenario({
+      destination,
+      weather,
+      scenario,
+      experiences,
+      activeTrip
+    });
+    return res.json(simulationResult);
+  } catch (err) {
+    console.error('Error in /api/weather/digital-twin/simulate:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Digital Twin simulation temporarily unavailable.'
+    });
   }
 });
 
@@ -1706,6 +1773,27 @@ router.get('/places/explore-search', async (req, res) => {
     });
   } catch (err) {
     return res.status(500).json({ success: false, items: [] });
+  }
+});
+
+// POST /api/weather/digital-twin/simulate - Run Digital Twin What-If Simulation
+router.post('/weather/digital-twin/simulate', async (req, res) => {
+  try {
+    const { destination, weather, scenario, experiences, activeTrip } = req.body;
+    const result = await simulateDigitalTwinScenario({
+      destination,
+      weather,
+      scenario: scenario || {},
+      experiences: experiences || [],
+      activeTrip: activeTrip || null
+    });
+    return res.json(result);
+  } catch (err) {
+    console.error('[Digital Twin Simulate Route Error]:', err);
+    return res.json({
+      success: false,
+      error: 'Digital Twin simulation temporarily unavailable.'
+    });
   }
 });
 

@@ -12,10 +12,12 @@ import {
   toggleSaveWishlistItem,
   getPlacesAutocomplete,
   getPlaceDetails,
-  resolveDestinationLocation
+  resolveDestinationLocation,
+  fetchLiveDestinationWeather
 } from '../services/api';
 import { formatDuration, getTodayLocalDateString } from '../utils/formatters';
 import ExperienceCard from '../components/ExperienceCard';
+import WeatherDigitalTwin from '../components/WeatherDigitalTwin';
 import {
   Sparkles,
   MapPin,
@@ -644,6 +646,48 @@ const Discover = () => {
     return userGpsName ? `📍 Near ${userGpsName.split(',')[0]?.trim()}` : '📍 Detecting Location...';
   };
 
+  // Live Weather for Active Discovery Destination (Follows Destination / Active Trip / Current Location)
+  const [liveWeather, setLiveWeather] = useState(null);
+
+  useEffect(() => {
+    if (effectiveLocation && (Number.isFinite(effectiveLocation.latitude) || effectiveLocation.destination || effectiveLocation.city)) {
+      fetchLiveDestinationWeather({
+        latitude: effectiveLocation.latitude,
+        longitude: effectiveLocation.longitude,
+        destination: effectiveLocation.destination || effectiveLocation.city
+      }).then(res => {
+        if (res && res.success) {
+          setLiveWeather(res);
+        } else {
+          setLiveWeather(null);
+        }
+      }).catch(() => setLiveWeather(null));
+    }
+  }, [effectiveLocation?.latitude, effectiveLocation?.longitude, effectiveLocation?.destination, effectiveLocation?.city]);
+
+  // Weather Suitability Signal Generator for Recommended Experiences
+  const getExperienceWeatherSignal = (exp) => {
+    if (!liveWeather) return null;
+    const rain = Number(liveWeather.rain?.probabilityPercent ?? 15);
+    const temp = Number(liveWeather.temperature ?? 24);
+    const text = `${exp.name || exp.title || ''} ${exp.category || ''} ${exp.description || ''} ${exp.whyVisit || ''}`.toLowerCase();
+    
+    const isOutdoor = text.includes('park') || text.includes('nature') || text.includes('hike') || text.includes('viewpoint') || text.includes('trail') || text.includes('outdoor') || text.includes('garden') || text.includes('walk') || text.includes('beach') || text.includes('trek');
+    const isIndoor = text.includes('museum') || text.includes('cafe') || text.includes('gallery') || text.includes('workshop') || text.includes('dining') || text.includes('restaurant') || text.includes('tea') || text.includes('spa') || text.includes('craft') || text.includes('indoor');
+
+    if (rain > 45) {
+      if (isOutdoor) return { type: 'exposed', label: '🌧️ Rain Exposed' };
+      if (isIndoor) return { type: 'sheltered', label: '🛡️ Weather Sheltered' };
+    } else if (temp > 33) {
+      if (isOutdoor) return { type: 'exposed', label: '☀️ High Heat Index' };
+      if (isIndoor) return { type: 'sheltered', label: '❄️ Air-Conditioned' };
+    } else if (rain < 25 && isOutdoor) {
+      return { type: 'optimal', label: '☀️ Weather Ideal' };
+    }
+    if (isIndoor) return { type: 'sheltered', label: '🏛️ Sheltered Venue' };
+    return null;
+  };
+
   return (
     <div
       style={{
@@ -1169,6 +1213,16 @@ const Discover = () => {
         )}
       </div>
 
+      {/* WEATHER-DRIVEN AI DIGITAL TWIN */}
+      <WeatherDigitalTwin
+        destinationLocation={effectiveLocation}
+        experiences={recommendations}
+        activeTrip={context?.activeTrip}
+        onAddToItinerary={handleAddToItinerary}
+        onAddToWishlist={handleToggleWishlist}
+        wishlistIds={wishlistIds}
+      />
+
       {/* EXPERIENCE INTENT CATEGORY SELECTOR */}
       <div style={{ marginBottom: '24px' }}>
         <h3 style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: '10px' }}>
@@ -1281,6 +1335,7 @@ const Discover = () => {
                 onAddToItinerary={handleAddToItinerary}
                 onToggleWishlist={handleToggleWishlist}
                 availableTimeLabel={context?.availableTimeFormatted && locationMode === 'active_trip' ? `${context.availableTimeFormatted} gap` : 'Available'}
+                weatherSignal={getExperienceWeatherSignal(rec)}
               />
             );
           })}
