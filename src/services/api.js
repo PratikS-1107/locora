@@ -515,6 +515,9 @@ const INITIAL_MOCK_TRIPS = [
     destination: 'Kyoto, Japan',
     country: 'Japan',
     country_code: 'JP',
+    latitude: 35.0116,
+    longitude: 135.7681,
+    formatted_address: 'Kyoto, Japan',
     cover_image_url: 'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&w=600&q=80',
     cover_image: 'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&w=600&q=80',
     start_date: '2026-08-20',
@@ -538,6 +541,9 @@ const INITIAL_MOCK_TRIPS = [
     destination: 'Hokkaido, Japan',
     country: 'Japan',
     country_code: 'JP',
+    latitude: 43.0642,
+    longitude: 141.3469,
+    formatted_address: 'Hokkaido, Japan',
     cover_image_url: 'https://images.unsplash.com/photo-1542051841857-5f90071e7989?auto=format&fit=crop&w=600&q=80',
     cover_image: 'https://images.unsplash.com/photo-1542051841857-5f90071e7989?auto=format&fit=crop&w=600&q=80',
     start_date: '2026-11-10',
@@ -561,6 +567,9 @@ const INITIAL_MOCK_TRIPS = [
     destination: 'Varanasi, India',
     country: 'India',
     country_code: 'IN',
+    latitude: 25.3176,
+    longitude: 82.9739,
+    formatted_address: 'Varanasi, India',
     cover_image_url: 'https://images.unsplash.com/photo-1561361513-2d000a50f0dc?auto=format&fit=crop&w=600&q=80',
     cover_image: 'https://images.unsplash.com/photo-1561361513-2d000a50f0dc?auto=format&fit=crop&w=600&q=80',
     start_date: '2026-05-10',
@@ -584,6 +593,9 @@ const INITIAL_MOCK_TRIPS = [
     destination: 'Tokyo, Japan',
     country: 'Japan',
     country_code: 'JP',
+    latitude: 35.6762,
+    longitude: 139.6503,
+    formatted_address: 'Tokyo, Japan',
     cover_image_url: 'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=600&q=80',
     cover_image: 'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=600&q=80',
     start_date: '2026-12-01',
@@ -608,6 +620,9 @@ const INITIAL_MOCK_TRIPS = [
     destination: 'Japan Golden Route',
     country: 'Japan',
     country_code: 'JP',
+    latitude: 35.6762,
+    longitude: 139.6503,
+    formatted_address: 'Tokyo, Japan',
     cover_image_url: 'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&w=600&q=80',
     cover_image: 'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&w=600&q=80',
     start_date: '2026-09-01',
@@ -632,6 +647,9 @@ const INITIAL_MOCK_TRIPS = [
     destination: 'Goa, India',
     country: 'India',
     country_code: 'IN',
+    latitude: 15.2993,
+    longitude: 74.1240,
+    formatted_address: 'Goa, India',
     cover_image_url: 'https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?auto=format&fit=crop&w=600&q=80',
     cover_image: 'https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?auto=format&fit=crop&w=600&q=80',
     start_date: '2026-10-05',
@@ -797,7 +815,7 @@ export const getPlacesAutocomplete = async (input) => {
     const data = await res.json().catch(() => ({}));
     return { success: false, predictions: [], error: data.error || 'Google Places autocomplete is unavailable.' };
   } catch (err) {
-    console.error('getPlacesAutocomplete error:', err);
+    console.warn('getPlacesAutocomplete network warning:', err.message);
     return { success: false, predictions: [] };
   }
 };
@@ -1959,11 +1977,45 @@ export const geocodeDestination = async (query) => {
   return null;
 };
 
+// Curated fast-path registry for prominent destinations (eliminates external latency and API failure risk)
+const KNOWN_DESTINATION_REGISTRY = [
+  { match: 'kyoto', destination: 'Kyoto', city: 'Kyoto', country: 'Japan', country_code: 'JP', latitude: 35.0116, longitude: 135.7681, formatted_address: 'Kyoto, Japan' },
+  { match: 'tokyo', destination: 'Tokyo', city: 'Tokyo', country: 'Japan', country_code: 'JP', latitude: 35.6762, longitude: 139.6503, formatted_address: 'Tokyo, Japan' },
+  { match: 'osaka', destination: 'Osaka', city: 'Osaka', country: 'Japan', country_code: 'JP', latitude: 34.6937, longitude: 135.5023, formatted_address: 'Osaka, Japan' },
+  { match: 'hokkaido', destination: 'Hokkaido', city: 'Sapporo', country: 'Japan', country_code: 'JP', latitude: 43.0642, longitude: 141.3469, formatted_address: 'Hokkaido, Japan' },
+  { match: 'nara', destination: 'Nara', city: 'Nara', country: 'Japan', country_code: 'JP', latitude: 34.6851, longitude: 135.8048, formatted_address: 'Nara, Japan' },
+  { match: 'panvel', destination: 'Panvel', city: 'Panvel', country: 'India', country_code: 'IN', latitude: 18.9894, longitude: 73.1175, formatted_address: 'Panvel, Maharashtra, India' },
+  { match: 'mumbai', destination: 'Mumbai', city: 'Mumbai', country: 'India', country_code: 'IN', latitude: 19.0760, longitude: 72.8777, formatted_address: 'Mumbai, Maharashtra, India' },
+  { match: 'goa', destination: 'Goa', city: 'Panaji', country: 'India', country_code: 'IN', latitude: 15.2993, longitude: 74.1240, formatted_address: 'Goa, India' },
+  { match: 'varanasi', destination: 'Varanasi', city: 'Varanasi', country: 'India', country_code: 'IN', latitude: 25.3176, longitude: 82.9739, formatted_address: 'Varanasi, India' },
+  { match: 'jaipur', destination: 'Jaipur', city: 'Jaipur', country: 'India', country_code: 'IN', latitude: 26.9124, longitude: 75.7873, formatted_address: 'Jaipur, Rajasthan, India' },
+  { match: 'delhi', destination: 'Delhi', city: 'Delhi', country: 'India', country_code: 'IN', latitude: 28.6139, longitude: 77.2090, formatted_address: 'Delhi, India' },
+  { match: 'agra', destination: 'Agra', city: 'Agra', country: 'India', country_code: 'IN', latitude: 27.1767, longitude: 78.0081, formatted_address: 'Agra, Uttar Pradesh, India' },
+  { match: 'barcelona', destination: 'Barcelona', city: 'Barcelona', country: 'Spain', country_code: 'ES', latitude: 41.3879, longitude: 2.1699, formatted_address: 'Barcelona, Spain' },
+  { match: 'paris', destination: 'Paris', city: 'Paris', country: 'France', country_code: 'FR', latitude: 48.8566, longitude: 2.3522, formatted_address: 'Paris, France' },
+  { match: 'new york', destination: 'New York City', city: 'New York', country: 'United States', country_code: 'US', latitude: 40.7128, longitude: -74.0060, formatted_address: 'New York, NY, USA' },
+  { match: 'san francisco', destination: 'San Francisco', city: 'San Francisco', country: 'United States', country_code: 'US', latitude: 37.7749, longitude: -122.4194, formatted_address: 'San Francisco, CA, USA' },
+  { match: 'london', destination: 'London', city: 'London', country: 'United Kingdom', country_code: 'GB', latitude: 51.5074, longitude: -0.1278, formatted_address: 'London, UK' },
+  { match: 'rome', destination: 'Rome', city: 'Rome', country: 'Italy', country_code: 'IT', latitude: 41.9028, longitude: 12.4964, formatted_address: 'Rome, Italy' }
+];
+
 export const resolveDestinationLocation = async (destinationName) => {
   if (!destinationName || typeof destinationName !== 'string' || !destinationName.trim()) {
     return null;
   }
   const rawQ = destinationName.trim();
+
+  // 0. Curated Registry Fast-Path (instant resolution without external network requests or API failure risk)
+  const normalizedLower = rawQ.toLowerCase();
+  for (const item of KNOWN_DESTINATION_REGISTRY) {
+    if (normalizedLower.includes(item.match) || item.match.includes(normalizedLower)) {
+      return {
+        ...item,
+        place_id: `verified-${item.match}`,
+        source: 'Curated Registry'
+      };
+    }
+  }
 
   // Create list of search candidates (e.g. for "Kyoto & Osaka", try ["Kyoto & Osaka", "Kyoto", "Osaka"])
   const candidateQueries = [rawQ];
@@ -1998,7 +2050,7 @@ export const resolveDestinationLocation = async (destinationName) => {
         }
       }
     } catch (err) {
-      console.warn(`Google Places resolution warning for "${q}":`, err);
+      console.warn(`Google Places resolution warning for "${q}":`, err.message);
     }
   }
 
@@ -2323,8 +2375,30 @@ const getRecommendationsUncached = async (context = {}) => {
             name: rec.name || rec.title || 'Local Place',
             title: rec.title || rec.name || 'Local Place',
             address: rec.address || (typeof rec.location === 'object' ? rec.location.name : rec.location) || 'Local Area',
-            latitude: rec.latitude ?? rec.location?.lat ?? null,
-            longitude: rec.longitude ?? rec.location?.lng ?? null,
+            latitude: Number.isFinite(Number(rec.latitude))
+              ? Number(rec.latitude)
+              : (Number.isFinite(Number(rec.lat))
+                ? Number(rec.lat)
+                : (Number.isFinite(Number(rec.location?.lat))
+                  ? Number(rec.location.lat)
+                  : (Number.isFinite(Number(rec.location?.latitude))
+                    ? Number(rec.location.latitude)
+                    : (Number.isFinite(Number(rec.coords?.latitude))
+                      ? Number(rec.coords.latitude)
+                      : null)))),
+            longitude: Number.isFinite(Number(rec.longitude))
+              ? Number(rec.longitude)
+              : (Number.isFinite(Number(rec.lng))
+                ? Number(rec.lng)
+                : (Number.isFinite(Number(rec.lon))
+                  ? Number(rec.lon)
+                  : (Number.isFinite(Number(rec.location?.lng))
+                    ? Number(rec.location.lng)
+                    : (Number.isFinite(Number(rec.location?.longitude))
+                      ? Number(rec.location.longitude)
+                      : (Number.isFinite(Number(rec.coords?.longitude))
+                        ? Number(rec.coords.longitude)
+                        : null))))),
             category: rec.category || intentKey.charAt(0).toUpperCase() + intentKey.slice(1),
             description: rec.description || 'Authentic place or experience near your location.',
             location: typeof rec.location === 'object' ? rec.location : { name: rec.location || rec.address || 'Local Vicinity', distance_km: rec.distanceKm || parseFloat(rec.distance) || 1.2 },

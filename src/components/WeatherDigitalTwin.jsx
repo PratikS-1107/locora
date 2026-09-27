@@ -42,6 +42,54 @@ import { fetchLiveDestinationWeather, simulateWeatherDigitalTwin } from '../serv
  * 6. AI Strategic Contingency Analysis (Gemini via server proxy)
  * 7. Non-destructive simulation: Real trip itinerary is NEVER modified automatically.
  */
+// Reliable coordinate extractor from any experience/place shape
+const getExperienceCoords = (exp) => {
+  if (!exp) return null;
+  const lat = exp.latitude ?? exp.lat ?? exp.location?.latitude ?? exp.location?.lat ?? exp.geometry?.location?.lat ?? exp.coords?.latitude;
+  const lng = exp.longitude ?? exp.lng ?? exp.lon ?? exp.location?.longitude ?? exp.location?.lng ?? exp.geometry?.location?.lng ?? exp.coords?.longitude;
+  const latNum = Number(lat);
+  const lngNum = Number(lng);
+  if (Number.isFinite(latNum) && Number.isFinite(lngNum) && latNum >= -90 && latNum <= 90 && lngNum >= -180 && lngNum <= 180) {
+    return { lat: latNum, lng: lngNum };
+  }
+  return null;
+};
+
+// Client-side environment classifier to ensure instant shelter/exposure status
+const classifyExperienceEnvironment = (exp) => {
+  if (exp?.environment) return exp.environment;
+  const text = [
+    exp?.name || exp?.title || '',
+    exp?.category || '',
+    exp?.description || exp?.reason || '',
+    exp?.whyVisit || '',
+    exp?.address || ''
+  ].join(' ').toLowerCase();
+
+  const outdoorKeywords = [
+    'outdoor', 'park', 'garden', 'hike', 'trail', 'viewpoint', 'peak', 'mountain',
+    'pass', 'river', 'lake', 'waterfall', 'beach', 'walk', 'trek', 'terrace',
+    'shrine walk', 'forest', 'canyon', 'valley', 'rooftop', 'bazaar', 'open-air',
+    'safari', 'nature', 'sanctuary', 'cycling', 'promenade'
+  ];
+
+  const indoorKeywords = [
+    'museum', 'gallery', 'cafe', 'coffee', 'tea', 'dining', 'restaurant',
+    'workshop', 'pottery', 'cooking', 'craft', 'indoor', 'temple interior',
+    'library', 'spa', 'bath', 'onsen', 'palace interior', 'market hall',
+    'arcade', 'bistro', 'brewery', 'cellar', 'theatre', 'cultural center'
+  ];
+
+  let outdoorScore = 0;
+  let indoorScore = 0;
+  outdoorKeywords.forEach(k => { if (text.includes(k)) outdoorScore += 1; });
+  indoorKeywords.forEach(k => { if (text.includes(k)) indoorScore += 1; });
+
+  if (outdoorScore > indoorScore) return 'outdoor';
+  if (indoorScore > outdoorScore) return 'indoor';
+  return 'mixed';
+};
+
 function WeatherDigitalTwinInner({
   destinationLocation,
   experiences = [],
@@ -252,10 +300,112 @@ function WeatherDigitalTwinInner({
     return <Sun size={20} style={{ color: '#f59e0b' }} />;
   };
 
-  // Evaluated Map Experiences
-  const mapExperiences = useMemo(() => {
-    return simulationResult?.evaluatedExperiences || experiences.slice(0, 8);
+  // Synchronize simulation whenever real experiences arrive asynchronously
+  useEffect(() => {
+    if (experiences && experiences.length > 0 && weatherData) {
+      runSimulation({
+        rainIntensity: simRain,
+        temperature: simTemp,
+        stormDurationHours: simDuration,
+        preset: scenarioMode
+      }, weatherData);
+    }
+  }, [experiences, weatherData]);
+
+  const centerLat = Number(destLat);
+  const centerLng = Number(destLng);
+  const hasCenterCoords = Number.isFinite(centerLat) && Number.isFinite(centerLng) && centerLat >= -90 && centerLat <= 90 && centerLng >= -180 && centerLng <= 180;
+
+  // Real candidate pool: evaluated experiences first, fallback to raw experiences if simulation hasn't returned yet
+  const candidatePool = useMemo(() => {
+    if (Array.isArray(simulationResult?.evaluatedExperiences) && simulationResult.evaluatedExperiences.length > 0) {
+      return simulationResult.evaluatedExperiences;
+    }
+    if (Array.isArray(experiences) && experiences.length > 0) {
+      return experiences;
+    }
+    return [];
   }, [simulationResult, experiences]);
+
+  // Extract, validate, classify, and calculate relative distances for real points
+  const geospatialPoints = useMemo(() => {
+    if (!hasCenterCoords || candidatePool.length === 0) return [];
+
+    const valid = [];
+    const seenIds = new Set();
+
+    for (let i = 0; i < candidatePool.length; i++) {
+      const exp = candidatePool[i];
+      if (!exp) continue;
+      const coords = getExperienceCoords(exp);
+      if (!coords) continue;
+
+      const id = exp.id || exp.placeId || `${coords.lat.toFixed(5)}_${coords.lng.toFixed(5)}`;
+      if (seenIds.has(id)) continue;
+      seenIds.add(id);
+
+      const env = exp.environment || classifyExperienceEnvironment(exp);
+      const isSheltered = env === 'indoor' || exp.impactStatus === 'optimal_shelter' || exp.impactStatus === 'suitable';
+
+      // Real distance in km using geographic delta from center
+      const dLat = coords.lat - centerLat;
+      const dLng = coords.lng - centerLng;
+      const cosLat = Math.cos((centerLat * Math.PI) / 180);
+      const dLatKm = dLat * 111.32;
+      const dLngKm = dLng * 111.32 * cosLat;
+      const distKm = Math.sqrt(dLatKm * dLatKm + dLngKm * dLngKm);
+
+      valid.push({
+        ...exp,
+        coords,
+        env,
+        isSheltered,
+        dLatKm,
+        dLngKm,
+        distKm
+      });
+    }
+
+    // Diagnostic logging per STEP 2
+    console.log('[Radar] destination:', destName);
+    console.log('[Radar] coordinates:', centerLat, centerLng);
+    console.log('[Radar] experiences count:', experiences?.length);
+    console.log('[Radar] valid geospatial points:', valid.length);
+
+    return valid;
+  }, [hasCenterCoords, centerLat, centerLng, candidatePool, experiences, destName]);
+
+  // Radar Viewport Scale & Relative Spatial Placement (Step 6)
+  const radarScale = useMemo(() => {
+    if (geospatialPoints.length === 0) {
+      return { maxKm: 5, pixelRadius: 105, pointsWithPixels: [] };
+    }
+
+    const maxDist = Math.max(...geospatialPoints.map(p => p.distKm));
+    // Dynamic maxKm: bounds the viewport between 0.6 km and 25 km, with 15% breathing room
+    const maxKm = Math.max(0.6, Math.min(25, maxDist * 1.15));
+    const pixelRadius = 105;
+    const scaleFactor = (pixelRadius * 0.85) / maxKm;
+
+    const pointsWithPixels = geospatialPoints.map(p => {
+      let x = p.dLngKm * scaleFactor;
+      let y = -p.dLatKm * scaleFactor; // North is -Y in screen coordinates
+
+      const currentDist = Math.sqrt(x * x + y * y);
+      if (currentDist > pixelRadius) {
+        x = (x / currentDist) * pixelRadius;
+        y = (y / currentDist) * pixelRadius;
+      }
+
+      return {
+        ...p,
+        x: Math.round(x),
+        y: Math.round(y)
+      };
+    });
+
+    return { maxKm, pixelRadius, pointsWithPixels };
+  }, [geospatialPoints]);
 
   return (
     <div
@@ -678,22 +828,29 @@ function WeatherDigitalTwinInner({
           {/* TAB 2: GEOSPATIAL MAP VISUALIZATION */}
           {activeTab === 'geospatial' && (
             <div>
+              <style>{`
+                @keyframes radarSweep {
+                  0% { transform: translate(-50%, -50%) rotate(0deg); }
+                  100% { transform: translate(-50%, -50%) rotate(360deg); }
+                }
+              `}</style>
               <div
                 style={{
                   position: 'relative',
                   width: '100%',
-                  height: '320px',
-                  backgroundColor: '#090d16',
+                  height: '350px',
+                  backgroundColor: '#070b14',
                   borderRadius: 'var(--radius-md)',
                   border: '1px solid rgba(14, 165, 233, 0.25)',
                   overflow: 'hidden',
                   display: 'flex',
                   flexDirection: 'column',
                   justifyContent: 'space-between',
-                  padding: '16px'
+                  padding: '16px',
+                  boxShadow: 'inset 0 0 40px rgba(0, 0, 0, 0.6)'
                 }}
               >
-                {/* RADAR / MAP CANVAS OVERLAY */}
+                {/* RADAR TACTICAL GRID OVERLAY */}
                 <div
                   style={{
                     position: 'absolute',
@@ -704,48 +861,199 @@ function WeatherDigitalTwinInner({
                   }}
                 />
 
-                {/* SIMULATED PRECIPITATION RADAR CONTOUR */}
-                {simRain > 20 && (
+                {/* CONCENTRIC RADAR RANGE RINGS & CROSSHAIRS (SVG LAYER) */}
+                <svg
+                  style={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    width: `${radarScale.pixelRadius * 2 + 20}px`,
+                    height: `${radarScale.pixelRadius * 2 + 20}px`,
+                    pointerEvents: 'none',
+                    zIndex: 1
+                  }}
+                >
+                  {/* Outer Range Ring */}
+                  <circle
+                    cx="50%"
+                    cy="50%"
+                    r={radarScale.pixelRadius}
+                    fill="none"
+                    stroke="rgba(14, 165, 233, 0.22)"
+                    strokeWidth="1"
+                    strokeDasharray="4 3"
+                  />
+                  {/* Mid Range Ring */}
+                  <circle
+                    cx="50%"
+                    cy="50%"
+                    r={radarScale.pixelRadius * 0.66}
+                    fill="none"
+                    stroke="rgba(14, 165, 233, 0.16)"
+                    strokeWidth="1"
+                    strokeDasharray="3 3"
+                  />
+                  {/* Inner Range Ring */}
+                  <circle
+                    cx="50%"
+                    cy="50%"
+                    r={radarScale.pixelRadius * 0.33}
+                    fill="none"
+                    stroke="rgba(14, 165, 233, 0.12)"
+                    strokeWidth="1"
+                    strokeDasharray="2 2"
+                  />
+                  {/* Axis Crosshairs */}
+                  <line
+                    x1="50%"
+                    y1="4%"
+                    x2="50%"
+                    y2="96%"
+                    stroke="rgba(14, 165, 233, 0.14)"
+                    strokeWidth="1"
+                    strokeDasharray="2 4"
+                  />
+                  <line
+                    x1="4%"
+                    y1="50%"
+                    x2="96%"
+                    y2="50%"
+                    stroke="rgba(14, 165, 233, 0.14)"
+                    strokeWidth="1"
+                    strokeDasharray="2 4"
+                  />
+                </svg>
+
+                {/* RANGE DISTANCE ANNOTATIONS ON RINGS */}
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: `calc(50% - ${radarScale.pixelRadius}px + 4px)`,
+                    left: 'calc(50% + 6px)',
+                    fontSize: '0.575rem',
+                    color: 'rgba(14, 165, 233, 0.65)',
+                    pointerEvents: 'none',
+                    zIndex: 2,
+                    fontFamily: 'monospace'
+                  }}
+                >
+                  {radarScale.maxKm.toFixed(1)} km
+                </span>
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: `calc(50% - ${radarScale.pixelRadius * 0.66}px + 4px)`,
+                    left: 'calc(50% + 6px)',
+                    fontSize: '0.575rem',
+                    color: 'rgba(14, 165, 233, 0.45)',
+                    pointerEvents: 'none',
+                    zIndex: 2,
+                    fontFamily: 'monospace'
+                  }}
+                >
+                  {(radarScale.maxKm * 0.66).toFixed(1)} km
+                </span>
+
+                {/* CARDINAL DIRECTION MARKERS */}
+                <span style={{ position: 'absolute', top: `calc(50% - ${radarScale.pixelRadius + 14}px)`, left: '50%', transform: 'translateX(-50%)', fontSize: '0.625rem', fontWeight: 800, color: 'rgba(14, 165, 233, 0.6)', pointerEvents: 'none', zIndex: 2 }}>N</span>
+                <span style={{ position: 'absolute', top: `calc(50% + ${radarScale.pixelRadius + 2}px)`, left: '50%', transform: 'translateX(-50%)', fontSize: '0.625rem', fontWeight: 800, color: 'rgba(14, 165, 233, 0.4)', pointerEvents: 'none', zIndex: 2 }}>S</span>
+                <span style={{ position: 'absolute', top: '50%', left: `calc(50% - ${radarScale.pixelRadius + 14}px)`, transform: 'translateY(-50%)', fontSize: '0.625rem', fontWeight: 800, color: 'rgba(14, 165, 233, 0.4)', pointerEvents: 'none', zIndex: 2 }}>W</span>
+                <span style={{ position: 'absolute', top: '50%', left: `calc(50% + ${radarScale.pixelRadius + 5}px)`, transform: 'translateY(-50%)', fontSize: '0.625rem', fontWeight: 800, color: 'rgba(14, 165, 233, 0.4)', pointerEvents: 'none', zIndex: 2 }}>E</span>
+
+                {/* ROTATING TACTICAL RADAR BEAM SWEEP */}
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    width: `${radarScale.pixelRadius * 2}px`,
+                    height: `${radarScale.pixelRadius * 2}px`,
+                    borderRadius: '50%',
+                    pointerEvents: 'none',
+                    zIndex: 1,
+                    background: 'conic-gradient(from 0deg at 50% 50%, rgba(14, 165, 233, 0) 0deg, rgba(14, 165, 233, 0) 300deg, rgba(14, 165, 233, 0.12) 360deg)',
+                    animation: 'radarSweep 6s linear infinite'
+                  }}
+                />
+
+                {/* SIMULATED PRECIPITATION / WEATHER IMPACT RADAR CONTOUR */}
+                {simRain > 15 && (
                   <div
                     style={{
                       position: 'absolute',
                       top: '50%',
                       left: '50%',
                       transform: 'translate(-50%, -50%)',
-                      width: `${Math.min(280, 100 + simRain * 1.8)}px`,
-                      height: `${Math.min(280, 100 + simRain * 1.8)}px`,
+                      width: `${Math.min(radarScale.pixelRadius * 2, 80 + simRain * 1.5)}px`,
+                      height: `${Math.min(radarScale.pixelRadius * 2, 80 + simRain * 1.5)}px`,
                       borderRadius: '50%',
-                      background: `radial-gradient(circle, rgba(14, 165, 233, ${simRain / 350}) 0%, rgba(99, 102, 241, 0.05) 60%, transparent 100%)`,
-                      border: `1px dashed rgba(56, 189, 248, ${Math.min(0.8, simRain / 100)})`,
+                      background: `radial-gradient(circle, rgba(14, 165, 233, ${Math.min(0.25, simRain / 400)}) 0%, rgba(99, 102, 241, 0.04) 60%, transparent 100%)`,
+                      border: `1px dashed rgba(56, 189, 248, ${Math.min(0.65, simRain / 120)})`,
                       pointerEvents: 'none',
-                      animation: 'pulse 3s infinite ease-in-out'
+                      animation: 'pulse 3s infinite ease-in-out',
+                      zIndex: 1
+                    }}
+                  />
+                )}
+
+                {/* THERMAL EXPOSURE BOUNDARY CONTOUR */}
+                {simTemp > 33 && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '50%',
+                      left: '50%',
+                      transform: 'translate(-50%, -50%)',
+                      width: `${radarScale.pixelRadius * 1.6}px`,
+                      height: `${radarScale.pixelRadius * 1.6}px`,
+                      borderRadius: '50%',
+                      background: 'radial-gradient(circle, rgba(245, 158, 11, 0.08) 0%, transparent 75%)',
+                      border: '1px dashed rgba(245, 158, 11, 0.3)',
+                      pointerEvents: 'none',
+                      zIndex: 1
                     }}
                   />
                 )}
 
                 {/* MAP HEADER HUD */}
-                <div style={{ position: 'relative', zIndex: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ position: 'relative', zIndex: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <MapPin size={16} style={{ color: 'var(--primary)' }} />
+                    <MapPin size={16} style={{ color: 'var(--primary)', flexShrink: 0 }} />
                     <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#fff' }}>
                       {destName} Tactical Weather Sector
                     </span>
                     <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                      ({destLat ? `${Number(destLat).toFixed(3)}°N, ${Number(destLng).toFixed(3)}°E` : 'Coordinates active'})
+                      ({hasCenterCoords ? `${centerLat.toFixed(3)}°N, ${centerLng.toFixed(3)}°E` : 'Coordinates active'})
                     </span>
+                    {radarScale.pointsWithPixels.length > 0 && (
+                      <span
+                        style={{
+                          fontSize: '0.65rem',
+                          padding: '1px 6px',
+                          borderRadius: '4px',
+                          backgroundColor: 'rgba(14, 165, 233, 0.15)',
+                          color: 'var(--primary)',
+                          border: '1px solid rgba(14, 165, 233, 0.3)',
+                          fontWeight: 600
+                        }}
+                      >
+                        {radarScale.pointsWithPixels.length} places plotted
+                      </span>
+                    )}
                   </div>
-                  <div style={{ display: 'flex', gap: '8px', fontSize: '0.7rem' }}>
+                  <div style={{ display: 'flex', gap: '10px', fontSize: '0.7rem' }}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--accent-emerald)' }}>
-                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: 'var(--accent-emerald)' }}></span> Sheltered
+                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: 'var(--accent-emerald)', boxShadow: '0 0 6px var(--accent-emerald)' }}></span> Sheltered
                     </span>
                     <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--accent-rose)' }}>
-                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: 'var(--accent-rose)' }}></span> Exposed
+                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: 'var(--accent-rose)', boxShadow: '0 0 6px var(--accent-rose)' }}></span> Exposed
                     </span>
                   </div>
                 </div>
 
                 {/* GEOSPATIAL EXPERIENCE PINS PROJECTION */}
-                <div style={{ position: 'relative', zIndex: 2, flex: 1, margin: '20px 0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ position: 'relative', zIndex: 4, flex: 1, margin: '14px 0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {/* Destination Center Pin */}
                   <div
                     style={{
@@ -756,56 +1064,69 @@ function WeatherDigitalTwinInner({
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
-                      zIndex: 5
+                      zIndex: 8
                     }}
                   >
                     <div
                       style={{
-                        width: '16px',
-                        height: '16px',
+                        width: '14px',
+                        height: '14px',
                         borderRadius: '50%',
                         backgroundColor: 'var(--primary)',
                         boxShadow: '0 0 16px var(--primary), 0 0 24px rgba(14, 165, 233, 0.8)',
                         border: '2px solid #fff'
                       }}
                     />
-                    <span style={{ fontSize: '0.675rem', fontWeight: 700, color: '#fff', marginTop: '4px', backgroundColor: 'rgba(0,0,0,0.7)', padding: '1px 5px', borderRadius: '4px' }}>
+                    <span
+                      style={{
+                        fontSize: '0.65rem',
+                        fontWeight: 700,
+                        color: '#fff',
+                        marginTop: '4px',
+                        backgroundColor: 'rgba(8, 12, 22, 0.9)',
+                        padding: '1px 6px',
+                        borderRadius: '4px',
+                        border: '1px solid rgba(14, 165, 233, 0.4)',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
                       {destName}
                     </span>
                   </div>
 
-                  {/* Satellite Experience Pins */}
-                  {mapExperiences.map((exp, i) => {
-                    const angle = (i / Math.max(1, mapExperiences.length)) * 2 * Math.PI;
-                    const radius = 65 + ((i % 3) * 35);
-                    const x = Math.cos(angle) * radius;
-                    const y = Math.sin(angle) * radius;
-                    const isIndoor = exp.environment === 'indoor' || exp.impactStatus === 'optimal_shelter';
-                    const isSelected = selectedMapItem?.id === exp.id;
+                  {/* Satellite Real Experience Pins Projected via Relative Coordinates */}
+                  {radarScale.pointsWithPixels.map((exp, i) => {
+                    const isSelected = selectedMapItem?.id === exp.id || selectedMapItem?.placeId === exp.placeId;
+                    const isSheltered = exp.isSheltered;
+                    const markerColor = isSheltered ? 'var(--accent-emerald)' : 'var(--accent-rose)';
 
                     return (
                       <div
-                        key={exp.id || i}
+                        key={exp.id || exp.placeId || i}
                         onClick={() => setSelectedMapItem(exp)}
                         style={{
                           position: 'absolute',
-                          top: `calc(50% + ${y}px)`,
-                          left: `calc(50% + ${x}px)`,
+                          top: `calc(50% + ${exp.y}px)`,
+                          left: `calc(50% + ${exp.x}px)`,
                           transform: 'translate(-50%, -50%)',
                           cursor: 'pointer',
                           display: 'flex',
                           flexDirection: 'column',
                           alignItems: 'center',
-                          zIndex: isSelected ? 10 : 3
+                          zIndex: isSelected ? 12 : 5,
+                          transition: 'transform 0.15s ease'
                         }}
+                        title={`${exp.name || exp.title} (${exp.distKm ? `${exp.distKm.toFixed(1)} km` : 'nearby'})`}
                       >
                         <div
                           style={{
                             width: isSelected ? '14px' : '10px',
                             height: isSelected ? '14px' : '10px',
                             borderRadius: '50%',
-                            backgroundColor: isIndoor ? 'var(--accent-emerald)' : 'var(--accent-rose)',
-                            boxShadow: isIndoor ? '0 0 8px var(--accent-emerald)' : '0 0 8px var(--accent-rose)',
+                            backgroundColor: markerColor,
+                            boxShadow: isSelected
+                              ? `0 0 12px ${markerColor}, 0 0 20px ${markerColor}`
+                              : `0 0 8px ${markerColor}`,
                             border: '1.5px solid #fff',
                             transition: 'all 0.2s ease'
                           }}
@@ -814,15 +1135,16 @@ function WeatherDigitalTwinInner({
                           style={{
                             fontSize: '0.6rem',
                             color: isSelected ? 'var(--primary)' : 'var(--text-secondary)',
-                            backgroundColor: 'rgba(10, 15, 29, 0.85)',
+                            backgroundColor: 'rgba(8, 12, 22, 0.9)',
                             padding: '1px 5px',
                             borderRadius: '3px',
                             marginTop: '2px',
                             whiteSpace: 'nowrap',
-                            maxWidth: '100px',
+                            maxWidth: '95px',
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
-                            border: isSelected ? '1px solid var(--primary)' : 'none'
+                            border: isSelected ? '1px solid var(--primary)' : '1px solid rgba(255, 255, 255, 0.08)',
+                            fontWeight: isSelected ? 700 : 500
                           }}
                         >
                           {exp.name || exp.title}
@@ -832,34 +1154,98 @@ function WeatherDigitalTwinInner({
                   })}
                 </div>
 
-                {/* SELECTED PIN DETAILS HUD */}
-                {selectedMapItem && (
+                {/* BOTTOM STATUS / SELECTED PIN DETAILS HUD */}
+                {selectedMapItem ? (
                   <div
                     style={{
                       position: 'relative',
-                      zIndex: 3,
+                      zIndex: 10,
                       padding: '8px 14px',
                       backgroundColor: 'rgba(15, 23, 42, 0.95)',
                       borderRadius: '6px',
-                      border: '1px solid rgba(14, 165, 233, 0.3)',
+                      border: '1px solid rgba(14, 165, 233, 0.35)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      fontSize: '0.75rem'
+                      gap: '12px',
+                      fontSize: '0.75rem',
+                      flexWrap: 'wrap'
                     }}
                   >
-                    <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                       <strong style={{ color: '#fff' }}>{selectedMapItem.name || selectedMapItem.title}</strong>
-                      <span style={{ color: 'var(--text-muted)', marginLeft: '8px' }}>
-                        {selectedMapItem.environment === 'indoor' ? 'Sheltered Indoor Venue' : 'Outdoor Weather-Sensitive'}
+                      <span
+                        style={{
+                          fontSize: '0.675rem',
+                          padding: '1px 6px',
+                          borderRadius: '4px',
+                          backgroundColor: selectedMapItem.isSheltered ? 'rgba(16, 185, 129, 0.15)' : 'rgba(244, 63, 94, 0.15)',
+                          color: selectedMapItem.isSheltered ? 'var(--accent-emerald)' : 'var(--accent-rose)',
+                          border: `1px solid ${selectedMapItem.isSheltered ? 'rgba(16, 185, 129, 0.3)' : 'rgba(244, 63, 94, 0.3)'}`,
+                          fontWeight: 600
+                        }}
+                      >
+                        {selectedMapItem.isSheltered ? 'Sheltered' : 'Exposed'}
                       </span>
+                      {selectedMapItem.distKm !== undefined && (
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
+                          ~{selectedMapItem.distKm.toFixed(1)} km from center
+                        </span>
+                      )}
+                      {selectedMapItem.impactNote && (
+                        <span style={{ color: 'var(--text-secondary)', fontSize: '0.7rem', display: 'block', width: '100%' }}>
+                          {selectedMapItem.impactNote}
+                        </span>
+                      )}
                     </div>
-                    <button
-                      onClick={() => setSelectedMapItem(null)}
-                      style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.7rem' }}
-                    >
-                      Dismiss
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {onAddToItinerary && (
+                        <button
+                          onClick={() => onAddToItinerary(selectedMapItem)}
+                          className="btn btn-primary"
+                          style={{ padding: '3px 8px', fontSize: '0.7rem' }}
+                        >
+                          Add to Trip
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setSelectedMapItem(null)}
+                        style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.7rem' }}
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  </div>
+                ) : radarScale.pointsWithPixels.length === 0 ? (
+                  <div
+                    style={{
+                      position: 'relative',
+                      zIndex: 2,
+                      padding: '6px 12px',
+                      backgroundColor: 'rgba(15, 23, 42, 0.7)',
+                      borderRadius: '6px',
+                      border: '1px solid rgba(255, 255, 255, 0.06)',
+                      textAlign: 'center',
+                      fontSize: '0.725rem',
+                      color: 'var(--text-muted)'
+                    }}
+                  >
+                    No nearby geospatial data available for this sector
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      position: 'relative',
+                      zIndex: 2,
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      fontSize: '0.675rem',
+                      color: 'var(--text-muted)'
+                    }}
+                  >
+                    <span>Sector coverage: {radarScale.maxKm.toFixed(1)} km radius</span>
+                    <span>Click any place marker for microclimate details</span>
                   </div>
                 )}
               </div>

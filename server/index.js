@@ -364,108 +364,108 @@ router.post('/places/autocomplete', async (req, res) => {
     const googleApiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY;
     console.log('[Places] API key configured:', Boolean(googleApiKey));
 
-    if (!googleApiKey || googleApiKey === 'YOUR_GOOGLE_API_KEY') {
-      console.error('[PLACES] Autocomplete unavailable: GOOGLE_MAPS_API_KEY is not configured');
-      return res.status(503).json({ success: false, predictions: [], error: 'Google Places is not configured.' });
-    }
+      if (!googleApiKey || googleApiKey === 'YOUR_GOOGLE_API_KEY') {
+        console.warn('[PLACES] Autocomplete unavailable: GOOGLE_MAPS_API_KEY is not configured');
+        return res.json({ success: false, predictions: [], error: 'Google Places is not configured.' });
+      }
 
-    // 1. Try Google Places API (New)
-    try {
-      const newApiUrl = 'https://places.googleapis.com/v1/places:autocomplete';
-      const newApiRes = await fetch(newApiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Goog-Api-Key': googleApiKey,
-          'X-Goog-FieldMask': 'suggestions.placePrediction.placeId,suggestions.placePrediction.text,suggestions.placePrediction.structuredFormat,suggestions.placePrediction.types'
-        },
-        body: JSON.stringify({ input })
-      });
+      // 1. Try Google Places API (New)
+      try {
+        const newApiUrl = 'https://places.googleapis.com/v1/places:autocomplete';
+        const newApiRes = await fetch(newApiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': googleApiKey,
+            'X-Goog-FieldMask': 'suggestions.placePrediction.placeId,suggestions.placePrediction.text,suggestions.placePrediction.structuredFormat,suggestions.placePrediction.types'
+          },
+          body: JSON.stringify({ input })
+        });
 
-      if (newApiRes.ok) {
-        const data = await newApiRes.json();
-        if (Array.isArray(data.suggestions) && data.suggestions.length > 0) {
-          const predictions = data.suggestions.map(s => {
-            const p = s.placePrediction || {};
-            return {
-              place_id: p.placeId || '',
-              description: p.text?.text || '',
-              main_text: p.structuredFormat?.mainText?.text || p.text?.text || '',
-              secondary_text: p.structuredFormat?.secondaryText?.text || '',
-              types: p.types || []
-            };
-          }).filter(p => p.place_id && p.description);
+        if (newApiRes.ok) {
+          const data = await newApiRes.json();
+          if (Array.isArray(data.suggestions) && data.suggestions.length > 0) {
+            const predictions = data.suggestions.map(s => {
+              const p = s.placePrediction || {};
+              return {
+                place_id: p.placeId || '',
+                description: p.text?.text || '',
+                main_text: p.structuredFormat?.mainText?.text || p.text?.text || '',
+                secondary_text: p.structuredFormat?.secondaryText?.text || '',
+                types: p.types || []
+              };
+            }).filter(p => p.place_id && p.description);
 
-          if (predictions.length > 0) {
+            if (predictions.length > 0) {
+              return res.json({
+                success: true,
+                predictions,
+                source: 'Google Places (New)'
+              });
+            }
+          } else if (Array.isArray(data.suggestions) && data.suggestions.length === 0) {
             return res.json({
               success: true,
-              predictions,
+              predictions: [],
               source: 'Google Places (New)'
             });
           }
-        } else if (Array.isArray(data.suggestions) && data.suggestions.length === 0) {
+        } else {
+          const errorData = await newApiRes.json().catch(() => ({}));
+          console.warn('[Places] Google (New) status:', newApiRes.status);
+          console.warn('[Places] Google (New) error:', errorData.error?.message || errorData.error?.status || null);
+        }
+      } catch (newErr) {
+        console.warn('[PLACES] Places API (New) autocomplete request failed:', newErr.message);
+      }
+
+      // 2. Fallback to Google Maps Places Autocomplete endpoint
+      const legacyUrl = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(input)}&key=${googleApiKey}`;
+      const legacyRes = await fetch(legacyUrl);
+      if (legacyRes.ok) {
+        const data = await legacyRes.json();
+
+        if (data.status === 'OK' && Array.isArray(data.predictions)) {
+          const predictions = data.predictions.map(p => ({
+            place_id: p.place_id,
+            description: p.description,
+            main_text: p.structured_formatting?.main_text || p.description,
+            secondary_text: p.structured_formatting?.secondary_text || '',
+            types: p.types || []
+          }));
+          return res.json({
+            success: true,
+            predictions,
+            source: 'Google Places'
+          });
+        } else if (data.status === 'ZERO_RESULTS') {
           return res.json({
             success: true,
             predictions: [],
-            source: 'Google Places (New)'
+            source: 'Google Places'
+          });
+        } else {
+          console.warn('[Places] Google status:', data.status, data.error_message);
+          return res.json({
+            success: false,
+            predictions: [],
+            error: data.error_message || `Google Places error: ${data.status}`
           });
         }
       } else {
-        const errorData = await newApiRes.json().catch(() => ({}));
-        console.error('[Places] Google (New) status:', newApiRes.status);
-        console.error('[Places] Google (New) error:', errorData.error?.message || errorData.error?.status || null);
+        const errorBody = await legacyRes.text().catch(() => '');
+        console.warn(`[PLACES] Legacy autocomplete HTTP failure: status=${legacyRes.status} body=${errorBody.slice(0, 500)}`);
       }
-    } catch (newErr) {
-      console.error('[PLACES] Places API (New) autocomplete request failed:', newErr.message);
+
+      return res.json({
+        success: false,
+        predictions: [],
+        error: 'Google Places autocomplete is unavailable.'
+      });
+    } catch (err) {
+      console.warn('Warning in places autocomplete endpoint:', err.message);
+      return res.json({ success: false, predictions: [], error: 'Unable to search destinations right now.' });
     }
-
-    // 2. Fallback to Google Maps Places Autocomplete endpoint
-    const legacyUrl = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(input)}&key=${googleApiKey}`;
-    const legacyRes = await fetch(legacyUrl);
-    if (legacyRes.ok) {
-      const data = await legacyRes.json();
-      console.error('[Places] Google status:', data.status);
-      console.error('[Places] Google error:', data.error_message || null);
-
-      if (data.status === 'OK' && Array.isArray(data.predictions)) {
-        const predictions = data.predictions.map(p => ({
-          place_id: p.place_id,
-          description: p.description,
-          main_text: p.structured_formatting?.main_text || p.description,
-          secondary_text: p.structured_formatting?.secondary_text || '',
-          types: p.types || []
-        }));
-        return res.json({
-          success: true,
-          predictions,
-          source: 'Google Places'
-        });
-      } else if (data.status === 'ZERO_RESULTS') {
-        return res.json({
-          success: true,
-          predictions: [],
-          source: 'Google Places'
-        });
-      } else {
-        return res.status(502).json({
-          success: false,
-          predictions: [],
-          error: data.error_message || `Google Places error: ${data.status}`
-        });
-      }
-    } else {
-      const errorBody = await legacyRes.text().catch(() => '');
-      console.error(`[PLACES] Legacy autocomplete HTTP failure: status=${legacyRes.status} body=${errorBody.slice(0, 500)}`);
-    }
-
-    return res.status(502).json({
-      success: false,
-      predictions: [],
-      error: 'Google Places autocomplete is unavailable.'
-    });
-  } catch (err) {
-    console.error('Error in places autocomplete endpoint:', err);
-    return res.status(502).json({ success: false, predictions: [], error: 'Unable to search destinations right now.' });
   }
 });
 
@@ -574,16 +574,16 @@ router.post('/places/details', async (req, res) => {
         console.error(`[PLACES] Legacy details HTTP failure: status=${apiRes.status} body=${errorBody.slice(0, 500)}`);
       }
     } else {
-      console.error('[PLACES] Details unavailable: GOOGLE_MAPS_API_KEY is not configured');
+      console.warn('[PLACES] Details unavailable: GOOGLE_MAPS_API_KEY is not configured');
     }
 
-    return res.status(502).json({
+    return res.json({
       success: false,
       error: 'Google Places details are unavailable.'
     });
   } catch (err) {
-    console.error('Error in places details endpoint:', err);
-    return res.status(500).json({ success: false, error: 'Unable to retrieve place details right now.' });
+    console.warn('Error in places details endpoint:', err.message);
+    return res.json({ success: false, error: 'Unable to retrieve place details right now.' });
   }
 });
 
