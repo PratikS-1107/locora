@@ -85,6 +85,7 @@ const Discover = () => {
   const [isSearchingPlaces, setIsSearchingPlaces] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const searchContainerRef = useRef(null);
+  const isSelectingPredictionRef = useRef(false);
 
   // Itinerary Context State
   const [context, setContext] = useState(null);
@@ -126,24 +127,35 @@ const Discover = () => {
 
   // Debounced Destination Autocomplete Search (Google Places)
   useEffect(() => {
-    if (!searchQuery.trim() || searchQuery.length < 2) {
+    if (isSelectingPredictionRef.current) {
+      isSelectingPredictionRef.current = false;
+      setIsSearchingPlaces(false);
+      return;
+    }
+
+    const trimmed = searchQuery.trim();
+    if (!trimmed || trimmed.length < 2) {
       setSearchSuggestions([]);
       setIsSearchingPlaces(false);
       return;
     }
 
+    setIsSearchingPlaces(true);
+    setShowSuggestions(true);
+
     const timer = setTimeout(async () => {
-      setIsSearchingPlaces(true);
       try {
-        const res = await getPlacesAutocomplete(searchQuery);
-        if (res.success && Array.isArray(res.predictions)) {
+        console.log('[Discover Search] Autocomplete request fired for:', trimmed);
+        const res = await getPlacesAutocomplete(trimmed);
+        console.log('[Discover Search] Autocomplete response received:', res);
+        if (res && res.success && Array.isArray(res.predictions)) {
+          console.log(`[Discover Search] Updated searchSuggestions with ${res.predictions.length} results`);
           setSearchSuggestions(res.predictions);
-          setShowSuggestions(true);
         } else {
           setSearchSuggestions([]);
         }
       } catch (err) {
-        console.error('Destination autocomplete search error:', err);
+        console.error('[Discover Search] Destination autocomplete search error:', err);
         setSearchSuggestions([]);
       } finally {
         setIsSearchingPlaces(false);
@@ -377,18 +389,22 @@ const Discover = () => {
       return;
     }
 
+    isSelectingPredictionRef.current = true;
     setIsSearchingPlaces(true);
     setShowSuggestions(false);
     try {
       const resolved = await resolveDestinationLocation(q);
       if (resolved && Number.isFinite(resolved.latitude) && Number.isFinite(resolved.longitude)) {
         const newDestLocation = {
+          name: resolved.city || resolved.destination || q,
           destination: resolved.city || resolved.destination || q,
           city: resolved.city || resolved.destination || q,
+          address: resolved.formatted_address || q,
           country: resolved.country || '',
           country_code: resolved.country_code || '',
           latitude: Number(resolved.latitude),
           longitude: Number(resolved.longitude),
+          placeId: resolved.place_id || '',
           place_id: resolved.place_id || '',
           formatted_address: resolved.formatted_address || q,
           source: resolved.source || 'Search'
@@ -413,6 +429,8 @@ const Discover = () => {
 
   // Handle Destination Prediction Selection from Google Places Autocomplete
   const handleSelectPrediction = async (prediction) => {
+    console.log('[Discover Search] User selected prediction:', prediction);
+    isSelectingPredictionRef.current = true;
     const destName = prediction.main_text || prediction.description;
     setSearchQuery(destName);
     setShowSuggestions(false);
@@ -429,7 +447,9 @@ const Discover = () => {
 
       // 1. Fetch exact place details
       if (prediction.place_id) {
+        console.log('[Discover Search] Place details request fired for place_id:', prediction.place_id);
         const details = await getPlaceDetails(prediction.place_id);
+        console.log('[Discover Search] Place details response received:', details);
         if (details && details.success) {
           lat = details.latitude ?? null;
           lng = details.longitude ?? null;
@@ -442,7 +462,9 @@ const Discover = () => {
 
       // 2. Fallback coordinates if place details lacked lat/lng
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        console.log('[Discover Search] Resolving coordinates fallback for:', destName);
         const resolved = await resolveDestinationLocation(destName);
+        console.log('[Discover Search] Fallback resolved coordinates received:', resolved);
         if (resolved && Number.isFinite(resolved.latitude) && Number.isFinite(resolved.longitude)) {
           lat = resolved.latitude;
           lng = resolved.longitude;
@@ -452,19 +474,25 @@ const Discover = () => {
         }
       }
 
+      console.log(`[Discover Search] Coordinates received: lat=${lat}, lng=${lng}`);
+
       if (Number.isFinite(lat) && Number.isFinite(lng)) {
         const newDestLocation = {
+          name: city || destName,
           destination: city || destName,
           city: city || destName,
+          address: formattedAddress,
           country,
           country_code: countryCode,
           latitude: Number(lat),
           longitude: Number(lng),
+          placeId: prediction.place_id || '',
           place_id: prediction.place_id || '',
           formatted_address: formattedAddress,
           source: 'Google Places'
         };
 
+        console.log('[Discover Search] Setting locationMode = "destination" with destination:', newDestLocation);
         locationModeRef.current = 'destination';
         selectedDestinationRef.current = newDestLocation;
         isManualOverrideRef.current = true;
@@ -472,12 +500,13 @@ const Discover = () => {
         setLocationMode('destination');
         setIsManualOverride(true);
         showToast(`Exploring experiences in ${city || destName}`);
+        console.log('[Discover Search] Recommendation request uses coordinates:', newDestLocation.latitude, newDestLocation.longitude);
         fetchRecs(activeIntent, newDestLocation, 'destination', false);
       } else {
         showToast("Couldn't resolve that location. Try another place or area.");
       }
     } catch (err) {
-      console.error('Error selecting destination:', err);
+      console.error('[Discover Search] Error selecting destination:', err);
       showToast("Couldn't resolve that location. Try another place or area.");
     } finally {
       setIsSearchingPlaces(false);
@@ -754,6 +783,9 @@ const Discover = () => {
 
         {/* DESTINATION SEARCH & LOCATION CONTROLS BAR */}
         <div className="glass-panel" style={{
+          position: 'relative',
+          zIndex: 50,
+          overflow: 'visible',
           padding: '14px 18px',
           marginBottom: '20px',
           display: 'flex',
@@ -765,7 +797,7 @@ const Discover = () => {
           border: '1px solid var(--border-medium)'
         }}>
           {/* Real Google Places Autocomplete Destination Input */}
-          <div style={{ flex: '1 1 340px', minWidth: '260px', position: 'relative' }} ref={searchContainerRef}>
+          <div style={{ flex: '1 1 340px', minWidth: '260px', position: 'relative', zIndex: 60, overflow: 'visible' }} ref={searchContainerRef}>
             <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
               <div style={{ position: 'absolute', left: '12px', pointerEvents: 'none', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
                 {isSearchingPlaces ? (
@@ -782,13 +814,15 @@ const Discover = () => {
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value);
-                  if (!showSuggestions) setShowSuggestions(true);
+                  if (!showSuggestions && e.target.value.trim().length >= 2) setShowSuggestions(true);
                 }}
                 onFocus={() => {
-                  if (searchSuggestions.length > 0) setShowSuggestions(true);
+                  if (searchQuery.trim().length >= 2) setShowSuggestions(true);
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
+                  if (e.key === 'Escape') {
+                    setShowSuggestions(false);
+                  } else if (e.key === 'Enter') {
                     e.preventDefault();
                     handleSearchSubmit();
                   }
@@ -806,7 +840,12 @@ const Discover = () => {
               {searchQuery && (
                 <button
                   type="button"
-                  onClick={() => setSearchQuery('')}
+                  onClick={() => {
+                    setSearchQuery('');
+                    setSearchSuggestions([]);
+                    setShowSuggestions(false);
+                    setIsSearchingPlaces(false);
+                  }}
                   style={{
                     position: 'absolute',
                     right: '10px',
@@ -828,53 +867,91 @@ const Discover = () => {
               )}
             </div>
 
-            {/* Suggestions Dropdown */}
-            {showSuggestions && searchSuggestions.length > 0 && (
+            {/* Suggestions Dropdown - Positioned cleanly and elevated above the rest of the page */}
+            {showSuggestions && searchQuery.trim().length >= 2 && (
               <div
                 style={{
                   position: 'absolute',
-                  top: '100%',
+                  top: 'calc(100% + 6px)',
                   left: 0,
                   right: 0,
-                  zIndex: 300,
-                  marginTop: '4px',
-                  backgroundColor: 'var(--bg-surface, #0f172a)',
-                  border: '1px solid var(--border-medium)',
+                  zIndex: 200,
+                  backgroundColor: 'rgba(12, 17, 30, 0.98)',
+                  border: '1px solid rgba(255, 255, 255, 0.16)',
                   borderRadius: 'var(--radius-md)',
-                  boxShadow: 'var(--shadow-xl)',
-                  maxHeight: '260px',
+                  boxShadow: '0 20px 48px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(14, 165, 233, 0.25)',
+                  backdropFilter: 'blur(24px)',
+                  WebkitBackdropFilter: 'blur(24px)',
+                  maxHeight: '280px',
                   overflowY: 'auto'
                 }}
               >
-                {searchSuggestions.map((pred) => (
-                  <div
-                    key={pred.place_id || pred.description}
-                    onClick={() => handleSelectPrediction(pred)}
-                    style={{
-                      padding: '11px 14px',
-                      cursor: 'pointer',
-                      borderBottom: '1px solid rgba(255,255,255,0.05)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      transition: 'background 0.15s ease'
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.07)'}
-                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                  >
-                    <MapPin size={15} style={{ color: 'var(--primary)', flexShrink: 0 }} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {pred.main_text || pred.description}
-                      </div>
-                      {pred.secondary_text && (
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {pred.secondary_text}
-                        </div>
-                      )}
-                    </div>
+                {isSearchingPlaces ? (
+                  <div style={{
+                    padding: '14px 18px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    color: 'var(--text-secondary)',
+                    fontSize: '0.85rem'
+                  }}>
+                    <Loader2 size={16} className="animate-spin" style={{ color: 'var(--primary)' }} />
+                    <span>Searching destinations for "{searchQuery}"...</span>
                   </div>
-                ))}
+                ) : searchSuggestions.length > 0 ? (
+                  searchSuggestions.map((pred) => (
+                    <div
+                      key={pred.place_id || pred.description}
+                      onClick={() => handleSelectPrediction(pred)}
+                      style={{
+                        padding: '12px 16px',
+                        cursor: 'pointer',
+                        borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        transition: 'background-color 0.15s ease'
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.08)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                    >
+                      <MapPin size={16} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{
+                          fontSize: '0.875rem',
+                          fontWeight: 600,
+                          color: 'var(--text-primary)',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis'
+                        }}>
+                          {pred.main_text || pred.description}
+                        </div>
+                        {pred.secondary_text && (
+                          <div style={{
+                            fontSize: '0.75rem',
+                            color: 'var(--text-muted)',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            marginTop: '2px'
+                          }}>
+                            {pred.secondary_text}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div style={{
+                    padding: '14px 18px',
+                    color: 'var(--text-secondary)',
+                    fontSize: '0.85rem',
+                    textAlign: 'center'
+                  }}>
+                    No destinations found for "{searchQuery}". Try pressing Enter to search.
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -950,17 +1027,52 @@ const Discover = () => {
 
       {/* TRIP CONTEXT PANEL */}
       <div className="glass-panel" style={{
+        position: 'relative',
+        zIndex: 1,
         padding: '18px 22px',
         marginBottom: '26px',
         background: 'linear-gradient(135deg, rgba(21, 29, 48, 0.85) 0%, rgba(10, 14, 24, 0.95) 100%)',
-        borderLeft: context?.hasTrip ? '3px solid var(--primary)' : '3px solid var(--text-dim)',
+        borderLeft: locationMode === 'destination' ? '3px solid var(--accent-cyan)' : (context?.hasTrip ? '3px solid var(--primary)' : '3px solid var(--text-dim)'),
         boxShadow: 'var(--shadow-md)'
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-          <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', color: context?.hasTrip ? 'var(--primary)' : 'var(--text-muted)', letterSpacing: '0.06em' }}>
-            {context?.hasTrip ? 'Active Journey Context' : (locationMode === 'destination' ? 'Destination Discovery Mode' : 'Local Exploration Mode (GPS Discovery)')}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+          <div style={{
+            fontSize: '0.7rem',
+            fontWeight: 700,
+            textTransform: 'uppercase',
+            color: locationMode === 'destination' ? 'var(--accent-cyan)' : (context?.hasTrip ? 'var(--primary)' : 'var(--text-muted)'),
+            letterSpacing: '0.06em',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px'
+          }}>
+            {locationMode === 'destination' ? (
+              <>
+                <Globe size={13} style={{ color: 'var(--accent-cyan)' }} />
+                <span>DISCOVERING DESTINATION: {activeCityName.toUpperCase()} (MANUAL OVERRIDE)</span>
+              </>
+            ) : context?.hasTrip ? (
+              <>
+                <Compass size={13} style={{ color: 'var(--primary)' }} />
+                <span>ACTIVE JOURNEY CONTEXT</span>
+              </>
+            ) : (
+              <span>LOCAL EXPLORATION MODE (GPS DISCOVERY)</span>
+            )}
           </div>
-          {!context?.hasTrip && (
+
+          {locationMode === 'destination' && context?.hasTrip && (
+            <button
+              onClick={handleSwitchToActiveTrip}
+              className="btn btn-secondary"
+              style={{ padding: '4px 12px', fontSize: '0.725rem', gap: '6px' }}
+            >
+              <Compass size={12} style={{ color: 'var(--accent-emerald)' }} />
+              <span>Return to Active Trip ({context.destination})</span>
+            </button>
+          )}
+
+          {!context?.hasTrip && locationMode !== 'destination' && (
             <button onClick={() => navigate('/create-trip')} className="btn btn-primary" style={{ padding: '4px 10px', fontSize: '0.725rem', gap: '4px' }}>
               <PlusCircle size={12} /> Create Trip
             </button>
@@ -970,6 +1082,43 @@ const Discover = () => {
         {contextLoading ? (
           <div style={{ padding: '8px 0', fontSize: '0.825rem', color: 'var(--text-muted)' }}>
             Loading active trip context...
+          </div>
+        ) : locationMode === 'destination' ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px' }}>
+            <div>
+              <div style={{ fontSize: '0.975rem', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <MapPin size={17} style={{ color: 'var(--accent-cyan)' }} />
+                <span>Currently discovering places in {effectiveLocation?.formatted_address || activeCityName}</span>
+              </div>
+              <div style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                {context?.hasTrip ? (
+                  <span>
+                    Active trip <strong style={{ color: '#fff' }}>{context.activeTrip.name || context.activeTrip.title}</strong> is saved in background. Discovery is focused on <strong style={{ color: 'var(--accent-cyan)' }}>{activeCityName}</strong>.
+                  </span>
+                ) : (
+                  <span>Showing authentic verified experiences near {activeCityName}.</span>
+                )}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <button
+                onClick={() => fetchRecs(activeIntent, selectedDestination, 'destination', true)}
+                disabled={recsLoading}
+                className="btn btn-secondary"
+                style={{ padding: '6px 14px', fontSize: '0.775rem', gap: '6px' }}
+              >
+                <RefreshCw size={13} className={recsLoading ? 'animate-spin' : ''} />
+                <span>Refresh {activeCityName}</span>
+              </button>
+              <button
+                onClick={handleClearDestinationSearch}
+                className="btn btn-secondary"
+                style={{ padding: '6px 12px', fontSize: '0.775rem', gap: '4px' }}
+              >
+                <X size={13} />
+                <span>Reset to {context?.hasTrip ? 'Trip' : 'GPS'}</span>
+              </button>
+            </div>
           </div>
         ) : context?.hasTrip ? (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px' }}>
@@ -1007,12 +1156,10 @@ const Discover = () => {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
             <div>
               <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                {locationMode === 'destination' ? `Exploring ${activeCityName}` : 'GPS Nearby Discovery Active'}
+                GPS Nearby Discovery Active
               </div>
               <div style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                {locationMode === 'destination'
-                  ? `Showing authentic recommendations in ${effectiveLocation?.formatted_address || activeCityName}. Search any place above or use your GPS.`
-                  : 'Showing authentic recommendations near your location. Create a trip to filter by available time gaps and remaining budget.'}
+                Showing authentic recommendations near your location. Create a trip to filter by available time gaps and remaining budget.
               </div>
             </div>
             <button onClick={() => navigate('/my-trips')} className="btn btn-secondary" style={{ fontSize: '0.775rem', padding: '6px 12px' }}>
