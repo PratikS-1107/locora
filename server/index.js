@@ -466,7 +466,6 @@ router.post('/places/autocomplete', async (req, res) => {
       console.warn('Warning in places autocomplete endpoint:', err.message);
       return res.json({ success: false, predictions: [], error: 'Unable to search destinations right now.' });
     }
-  }
 });
 
 // POST /api/places/details - Retrieve verified Place Details including country, country_code, lat/lng
