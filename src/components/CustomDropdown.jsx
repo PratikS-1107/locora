@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { ChevronDown, Check } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { ChevronDown, Check, Search } from 'lucide-react';
 
 const CustomDropdown = ({
   value,
@@ -14,42 +14,52 @@ const CustomDropdown = ({
   style = {},
   buttonStyle = {},
   menuStyle = {},
-  ariaLabel = 'Select option'
+  ariaLabel = 'Select option',
+  searchable = false,
+  searchPlaceholder = 'Search...'
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const dropdownRef = useRef(null);
+  const searchInputRef = useRef(null);
 
-  // Close when clicking outside
+  // Close when clicking outside and handle ESC
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setIsOpen(false);
+        setSearchQuery('');
       }
     };
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') {
         setIsOpen(false);
+        setSearchQuery('');
       }
     };
 
     if (isOpen) {
       document.addEventListener('mousedown', handleClickOutside);
       document.addEventListener('keydown', handleKeyDown);
+      if (searchable && searchInputRef.current) {
+        setTimeout(() => searchInputRef.current?.focus(), 50);
+      }
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isOpen]);
+  }, [isOpen, searchable]);
 
-  // Normalize options into { value, label, icon }
+  // Normalize options into { value, label, code, icon }
   const normalizedOptions = options.map((opt) => {
     if (typeof opt === 'string') {
       return { value: opt, label: opt };
     }
     return {
-      value: opt.value !== undefined ? opt.value : opt.id,
+      value: opt.value !== undefined ? opt.value : opt.id !== undefined ? opt.id : opt.name,
       label: opt.label || opt.name || opt.value || opt.id,
+      code: opt.code,
       icon: opt.icon
     };
   });
@@ -59,9 +69,20 @@ const CustomDropdown = ({
     label: value || placeholder
   };
 
+  const filteredOptions = normalizedOptions.filter((opt) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase().trim();
+    return (
+      (opt.label && opt.label.toLowerCase().includes(q)) ||
+      (opt.code && opt.code.toLowerCase().includes(q)) ||
+      (typeof opt.value === 'string' && opt.value.toLowerCase().includes(q))
+    );
+  });
+
   const handleSelect = (val) => {
     onChange?.(val);
     setIsOpen(false);
+    setSearchQuery('');
   };
 
   return (
@@ -156,8 +177,8 @@ const CustomDropdown = ({
             [align === 'right' ? 'right' : 'left']: 0,
             minWidth: fullWidth ? '100%' : minWidth,
             width: fullWidth ? '100%' : 'max-content',
-            maxWidth: '320px',
-            maxHeight: '280px',
+            maxWidth: fullWidth ? '100%' : '320px',
+            maxHeight: '290px',
             overflowY: 'auto',
             backgroundColor: 'rgba(14, 20, 34, 0.98)',
             backdropFilter: 'blur(24px)',
@@ -175,58 +196,118 @@ const CustomDropdown = ({
             ...menuStyle
           }}
         >
-          {normalizedOptions.map((opt) => {
-            const isSelected = opt.value === value;
-            return (
-              <button
-                key={String(opt.value)}
-                type="button"
-                role="option"
-                aria-selected={isSelected}
-                onClick={() => handleSelect(opt.value)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: '12px',
-                  width: '100%',
-                  padding: '9px 12px',
-                  borderRadius: '10px',
-                  backgroundColor: isSelected ? 'rgba(14, 165, 233, 0.18)' : 'transparent',
-                  border: isSelected ? '1px solid rgba(14, 165, 233, 0.35)' : '1px solid transparent',
-                  color: isSelected ? '#38bdf8' : 'rgba(248, 250, 252, 0.9)',
-                  fontSize: '0.85rem',
-                  fontWeight: isSelected ? 700 : 500,
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                  boxSizing: 'border-box',
-                  whiteSpace: 'nowrap'
-                }}
-                onMouseEnter={(e) => {
-                  if (!isSelected) {
-                    e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.08)';
-                    e.currentTarget.style.color = '#ffffff';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isSelected) {
-                    e.currentTarget.style.backgroundColor = 'transparent';
-                    e.currentTarget.style.color = 'rgba(248, 250, 252, 0.9)';
-                  }
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, overflow: 'hidden' }}>
-                  {opt.icon && <span style={{ flexShrink: 0 }}>{opt.icon}</span>}
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{opt.label}</span>
-                </div>
+          {searchable && (
+            <div
+              style={{
+                position: 'sticky',
+                top: 0,
+                padding: '4px 6px 8px 6px',
+                backgroundColor: 'rgba(14, 20, 34, 0.98)',
+                zIndex: 2,
+                borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+                marginBottom: '4px'
+              }}
+            >
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <Search
+                  size={14}
+                  style={{
+                    position: 'absolute',
+                    left: '10px',
+                    color: 'rgba(255, 255, 255, 0.45)',
+                    pointerEvents: 'none'
+                  }}
+                />
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  placeholder={searchPlaceholder}
+                  style={{
+                    width: '100%',
+                    height: '34px',
+                    padding: '0 10px 0 32px',
+                    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                    borderRadius: '8px',
+                    color: '#ffffff',
+                    fontSize: '0.85rem',
+                    outline: 'none',
+                    boxSizing: 'border-box'
+                  }}
+                  onFocus={(e) => {
+                    e.target.style.borderColor = '#0ea5e9';
+                    e.target.style.boxShadow = '0 0 0 2px rgba(14, 165, 233, 0.2)';
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+                    e.target.style.boxShadow = 'none';
+                  }}
+                />
+              </div>
+            </div>
+          )}
 
-                {isSelected && (
-                  <Check size={14} style={{ color: '#38bdf8', flexShrink: 0 }} />
-                )}
-              </button>
-            );
-          })}
+          {filteredOptions.length === 0 ? (
+            <div style={{ padding: '14px 12px', textAlign: 'center', color: 'rgba(255, 255, 255, 0.45)', fontSize: '0.85rem' }}>
+              No countries found
+            </div>
+          ) : (
+            filteredOptions.map((opt) => {
+              const isSelected = opt.value === value;
+              return (
+                <button
+                  key={String(opt.value)}
+                  type="button"
+                  role="option"
+                  aria-selected={isSelected}
+                  onClick={() => handleSelect(opt.value)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '12px',
+                    width: '100%',
+                    padding: '9px 12px',
+                    borderRadius: '10px',
+                    backgroundColor: isSelected ? 'rgba(14, 165, 233, 0.18)' : 'transparent',
+                    border: isSelected ? '1px solid rgba(14, 165, 233, 0.35)' : '1px solid transparent',
+                    color: isSelected ? '#38bdf8' : 'rgba(248, 250, 252, 0.9)',
+                    fontSize: '0.85rem',
+                    fontWeight: isSelected ? 700 : 500,
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    boxSizing: 'border-box',
+                    whiteSpace: 'nowrap'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isSelected) {
+                      e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.08)';
+                      e.currentTarget.style.color = '#ffffff';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isSelected) {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                      e.currentTarget.style.color = 'rgba(248, 250, 252, 0.9)';
+                    }
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, overflow: 'hidden' }}>
+                    {opt.icon && <span style={{ flexShrink: 0 }}>{opt.icon}</span>}
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{opt.label}</span>
+                  </div>
+
+                  {isSelected && (
+                    <Check size={14} style={{ color: '#38bdf8', flexShrink: 0 }} />
+                  )}
+                </button>
+              );
+            })
+          )}
         </div>
       )}
     </div>

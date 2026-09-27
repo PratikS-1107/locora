@@ -788,9 +788,14 @@ export const getPlacesAutocomplete = async (input) => {
     });
     if (res.ok) {
       const data = await res.json();
-      return { success: true, predictions: data.predictions || [] };
+      return {
+        success: data.success !== false,
+        predictions: data.predictions || [],
+        error: data.error || null
+      };
     }
-    return { success: false, predictions: [] };
+    const data = await res.json().catch(() => ({}));
+    return { success: false, predictions: [], error: data.error || 'Google Places autocomplete is unavailable.' };
   } catch (err) {
     console.error('getPlacesAutocomplete error:', err);
     return { success: false, predictions: [] };

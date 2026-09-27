@@ -33,7 +33,7 @@ const calculateHaversineDistance = (lat1, lon1, lat2, lon2) => {
 router.get('/places/photo', async (req, res) => {
   try {
     const { photo_reference } = req.query;
-    const googleApiKey = process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
+    const googleApiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY;
 
     if (!photo_reference || !googleApiKey || googleApiKey === 'YOUR_GOOGLE_API_KEY') {
       return res.status(400).send('Photo reference and valid Google Places API key required');
@@ -52,7 +52,7 @@ router.post('/places/reverse-geocode', async (req, res) => {
   try {
     const lat = req.body?.latitude ?? req.body?.lat;
     const lng = req.body?.longitude ?? req.body?.lng;
-    const googleApiKey = process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
+    const googleApiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY;
 
     if (lat === undefined || lng === undefined) {
       return res.status(400).json({ success: false, error: 'Latitude and longitude are required' });
@@ -146,7 +146,7 @@ export const serverGeocodeDestination = async (queryText) => {
 
   if (!query) return null;
 
-  const googleApiKey = process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
+  const googleApiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY;
 
   // 1. Try Google Maps Geocoding API if key available
   if (googleApiKey && googleApiKey !== 'YOUR_GOOGLE_API_KEY') {
@@ -362,9 +362,11 @@ router.post('/places/autocomplete', async (req, res) => {
     }
 
     const googleApiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY;
+    console.log('[Places] API key configured:', Boolean(googleApiKey));
 
     if (!googleApiKey || googleApiKey === 'YOUR_GOOGLE_API_KEY') {
-      return res.json({ success: true, predictions: [] });
+      console.error('[PLACES] Autocomplete unavailable: GOOGLE_MAPS_API_KEY is not configured');
+      return res.status(503).json({ success: false, predictions: [], error: 'Google Places is not configured.' });
     }
 
     // 1. Try Google Places API (New)
@@ -394,11 +396,13 @@ router.post('/places/autocomplete', async (req, res) => {
             };
           }).filter(p => p.place_id && p.description);
 
-          return res.json({
-            success: true,
-            predictions,
-            source: 'Google Places (New)'
-          });
+          if (predictions.length > 0) {
+            return res.json({
+              success: true,
+              predictions,
+              source: 'Google Places (New)'
+            });
+          }
         } else if (Array.isArray(data.suggestions) && data.suggestions.length === 0) {
           return res.json({
             success: true,
@@ -406,9 +410,13 @@ router.post('/places/autocomplete', async (req, res) => {
             source: 'Google Places (New)'
           });
         }
+      } else {
+        const errorData = await newApiRes.json().catch(() => ({}));
+        console.error('[Places] Google (New) status:', newApiRes.status);
+        console.error('[Places] Google (New) error:', errorData.error?.message || errorData.error?.status || null);
       }
     } catch (newErr) {
-      console.warn('Places API (New) fetch warning:', newErr);
+      console.error('[PLACES] Places API (New) autocomplete request failed:', newErr.message);
     }
 
     // 2. Fallback to Google Maps Places Autocomplete endpoint
@@ -416,6 +424,9 @@ router.post('/places/autocomplete', async (req, res) => {
     const legacyRes = await fetch(legacyUrl);
     if (legacyRes.ok) {
       const data = await legacyRes.json();
+      console.error('[Places] Google status:', data.status);
+      console.error('[Places] Google error:', data.error_message || null);
+
       if (data.status === 'OK' && Array.isArray(data.predictions)) {
         const predictions = data.predictions.map(p => ({
           place_id: p.place_id,
@@ -435,16 +446,26 @@ router.post('/places/autocomplete', async (req, res) => {
           predictions: [],
           source: 'Google Places'
         });
+      } else {
+        return res.status(502).json({
+          success: false,
+          predictions: [],
+          error: data.error_message || `Google Places error: ${data.status}`
+        });
       }
+    } else {
+      const errorBody = await legacyRes.text().catch(() => '');
+      console.error(`[PLACES] Legacy autocomplete HTTP failure: status=${legacyRes.status} body=${errorBody.slice(0, 500)}`);
     }
 
-    return res.json({
-      success: true,
-      predictions: []
+    return res.status(502).json({
+      success: false,
+      predictions: [],
+      error: 'Google Places autocomplete is unavailable.'
     });
   } catch (err) {
     console.error('Error in places autocomplete endpoint:', err);
-    return res.status(200).json({ success: true, predictions: [], error: 'Unable to search destinations right now.' });
+    return res.status(502).json({ success: false, predictions: [], error: 'Unable to search destinations right now.' });
   }
 });
 
@@ -501,9 +522,12 @@ router.post('/places/details', async (req, res) => {
             longitude: result.location?.longitude ?? null,
             source: 'Google Places (New)'
           });
+        } else {
+          const errorBody = await newRes.text().catch(() => '');
+          console.error(`[PLACES] Places API (New) details failed: status=${newRes.status} body=${errorBody.slice(0, 500)}`);
         }
       } catch (newErr) {
-        console.warn('Places (New) Details warning:', newErr);
+        console.error('[PLACES] Places API (New) details request failed:', newErr.message);
       }
 
       // 2. Fallback to legacy Place Details endpoint
@@ -542,20 +566,20 @@ router.post('/places/details', async (req, res) => {
             longitude: result.geometry?.location?.lng ?? null,
             source: 'Google Places'
           });
+        } else {
+          console.error(`[PLACES] Legacy details failed: status=${data.status || 'UNKNOWN'} error=${data.error_message || 'none'}`);
         }
+      } else {
+        const errorBody = await apiRes.text().catch(() => '');
+        console.error(`[PLACES] Legacy details HTTP failure: status=${apiRes.status} body=${errorBody.slice(0, 500)}`);
       }
+    } else {
+      console.error('[PLACES] Details unavailable: GOOGLE_MAPS_API_KEY is not configured');
     }
 
-    return res.json({
-      success: true,
-      place_id: placeId,
-      destination: placeId,
-      country: '',
-      country_code: '',
-      formatted_address: placeId,
-      latitude: null,
-      longitude: null,
-      source: 'Default'
+    return res.status(502).json({
+      success: false,
+      error: 'Google Places details are unavailable.'
     });
   } catch (err) {
     console.error('Error in places details endpoint:', err);
@@ -1247,7 +1271,7 @@ const handleRecommendationRequest = async (req, res) => {
 
     const latNum = Number(latitude);
     const lngNum = Number(longitude);
-    const googleApiKey = process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
+    const googleApiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY;
 
     // 1. Fetch factual real candidates using existing multi-query search & validation pipeline
     const realPlaces = await fetchMultiQueryPlaces(latNum, lngNum, category, googleApiKey);
@@ -1398,7 +1422,7 @@ const handleConversationalDiscoveryRequest = async (req, res) => {
 
     // If still no coordinates but destination is known, try Google Places Text Search as fallback geocoder
     if ((!Number.isFinite(lat) || !Number.isFinite(lng)) && targetDestination) {
-      const googleApiKey = process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
+      const googleApiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY;
       if (googleApiKey) {
         try {
           const tsUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(targetDestination)}&key=${googleApiKey}`;
@@ -1437,7 +1461,7 @@ const handleConversationalDiscoveryRequest = async (req, res) => {
     }
 
 
-    const googleApiKey = process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
+    const googleApiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY;
     const category = updatedState.category || intentResult.category || 'local';
 
     // 3. Fetch real factual candidate places using the existing multi-query search
