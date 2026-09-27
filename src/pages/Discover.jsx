@@ -204,6 +204,10 @@ const Discover = () => {
       return (context?.hasTrip && context?.activeTripLocation) ? context.activeTripLocation : null;
     }
     if (locationMode === 'gps') {
+      // Do not expose browser GPS while the active-trip context is still loading.
+      // Otherwise the Digital Twin can issue a GPS weather request before the
+      // trip location is known and briefly bind the wrong weather to the trip.
+      if (contextLoading && !isManualOverride) return null;
       if (userGpsCoords) {
         return {
           destination: userGpsName?.split(',')[0]?.trim() || 'Current Location',
@@ -221,6 +225,7 @@ const Discover = () => {
     // Initial mount fallback before user interaction:
     if (selectedDestination) return selectedDestination;
     if (context?.hasTrip && context?.activeTripLocation && !isManualOverride) return context.activeTripLocation;
+    if (contextLoading && !isManualOverride) return null;
     if (userGpsCoords) {
       return {
         destination: userGpsName?.split(',')[0]?.trim() || 'Current Location',
@@ -648,21 +653,30 @@ const Discover = () => {
 
   // Live Weather for Active Discovery Destination (Follows Destination / Active Trip / Current Location)
   const [liveWeather, setLiveWeather] = useState(null);
+  const liveWeatherRequestIdRef = useRef(0);
 
   useEffect(() => {
-    if (effectiveLocation && (Number.isFinite(effectiveLocation.latitude) || effectiveLocation.destination || effectiveLocation.city)) {
-      fetchLiveDestinationWeather({
-        latitude: effectiveLocation.latitude,
-        longitude: effectiveLocation.longitude,
-        destination: effectiveLocation.destination || effectiveLocation.city
-      }).then(res => {
-        if (res && res.success) {
-          setLiveWeather(res);
-        } else {
-          setLiveWeather(null);
-        }
-      }).catch(() => setLiveWeather(null));
-    }
+    const requestId = ++liveWeatherRequestIdRef.current;
+    const latitude = Number(effectiveLocation?.latitude);
+    const longitude = Number(effectiveLocation?.longitude);
+    setLiveWeather(null);
+
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+
+    fetchLiveDestinationWeather({
+      latitude,
+      longitude,
+      destination: effectiveLocation.destination || effectiveLocation.city
+    }).then(res => {
+      if (requestId !== liveWeatherRequestIdRef.current) return;
+      setLiveWeather(res && res.success ? res : null);
+    }).catch(() => {
+      if (requestId === liveWeatherRequestIdRef.current) setLiveWeather(null);
+    });
+
+    return () => {
+      liveWeatherRequestIdRef.current += 1;
+    };
   }, [effectiveLocation?.latitude, effectiveLocation?.longitude, effectiveLocation?.destination, effectiveLocation?.city]);
 
   // Weather Suitability Signal Generator for Recommended Experiences

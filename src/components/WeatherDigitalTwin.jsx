@@ -78,7 +78,11 @@ function WeatherDigitalTwinInner({
 
   // 1. Fetch live destination weather whenever destination coordinates or name change
   const loadLiveWeather = async () => {
-    if (!destinationLocation && !destName) return;
+    if (!Number.isFinite(Number(destLat)) || !Number.isFinite(Number(destLng))) {
+      setWeatherData(null);
+      setWeatherLoading(false);
+      return;
+    }
 
     // Increment request ID to track which request is current
     const currentRequestId = ++weatherRequestIdRef.current;
@@ -162,6 +166,9 @@ function WeatherDigitalTwinInner({
   useEffect(() => {
     weatherMismatchRetryRef.current = 0;
     loadLiveWeather();
+    return () => {
+      weatherRequestIdRef.current += 1;
+    };
   }, [destLat, destLng, destName]);
 
   // 2. Run What-If Simulation

@@ -2125,14 +2125,16 @@ export const getDiscoverContext = async (userId) => {
 
   const destName = activeTrip.destination || activeTrip.title || activeTrip.name;
   let activeTripLocation = null;
-  if (Number.isFinite(activeTrip.latitude) && Number.isFinite(activeTrip.longitude)) {
+  const tripLatitude = Number(activeTrip.latitude);
+  const tripLongitude = Number(activeTrip.longitude);
+  if (Number.isFinite(tripLatitude) && Number.isFinite(tripLongitude)) {
     activeTripLocation = {
       destination: destName,
       city: destName,
       country: activeTrip.country || '',
       country_code: activeTrip.country_code || '',
-      latitude: Number(activeTrip.latitude),
-      longitude: Number(activeTrip.longitude),
+      latitude: tripLatitude,
+      longitude: tripLongitude,
       formatted_address: activeTrip.formatted_address || destName,
       source: 'Trip Details'
     };
