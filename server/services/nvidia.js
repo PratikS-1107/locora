@@ -25,7 +25,7 @@ export const generateNvidiaResponse = async (messages, options = {}) => {
     for (const model of models) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3500);
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
 
         const response = await fetch(url, {
           method: 'POST',
