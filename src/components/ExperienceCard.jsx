@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, MapPin, Navigation, CheckCircle2, Star, ExternalLink, Car, ImageOff, Heart, Plus } from 'lucide-react';
+import { Clock, MapPin, Navigation, CheckCircle2, Star, ExternalLink, Car, Heart, Plus, Landmark, Utensils, Mountain, Sparkles, Compass } from 'lucide-react';
 import { formatDuration } from '../utils/formatters';
 
 const ExperienceCard = ({
@@ -18,6 +18,15 @@ const ExperienceCard = ({
   const description = experience.description || 'Authentic place or experience near your location.';
   const duration = formatDuration(experience.duration_minutes ?? experience.duration ?? 60);
   const travelTime = experience.estimated_travel_minutes ? `~${formatDuration(experience.estimated_travel_minutes)}` : null;
+
+  const getCategoryIcon = (cat) => {
+    const c = (cat || '').toLowerCase();
+    if (c.includes('food') || c.includes('dining') || c.includes('cafe')) return <Utensils size={22} style={{ color: '#38bdf8' }} />;
+    if (c.includes('nature') || c.includes('park') || c.includes('outdoor')) return <Mountain size={22} style={{ color: '#34d399' }} />;
+    if (c.includes('culture') || c.includes('heritage') || c.includes('temple') || c.includes('museum')) return <Landmark size={22} style={{ color: '#c084fc' }} />;
+    if (c.includes('gem') || c.includes('hidden') || c.includes('special')) return <Sparkles size={22} style={{ color: '#f59e0b' }} />;
+    return <Compass size={22} style={{ color: '#38bdf8' }} />;
+  };
 
   const distance = typeof experience.location === 'object' && experience.location?.distance_km !== undefined
     ? `${experience.location.distance_km} km away`
@@ -97,7 +106,7 @@ const ExperienceCard = ({
         e.currentTarget.style.boxShadow = '0 16px 36px rgba(0, 0, 0, 0.6)';
       }}
     >
-      {/* Image Banner / Neutral Placeholder */}
+      {/* Image Banner / Category Visual Banner */}
       <div style={{ height: '190px', position: 'relative', overflow: 'hidden', backgroundColor: '#141a28' }}>
         {hasValidPhoto ? (
           <img
@@ -119,23 +128,33 @@ const ExperienceCard = ({
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            background: 'linear-gradient(135deg, rgba(245, 166, 35, 0.12) 0%, rgba(13, 18, 31, 0.95) 100%)',
-            gap: '8px',
-            color: 'rgba(226, 232, 240, 0.6)'
+            background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.18) 0%, rgba(139, 92, 246, 0.12) 50%, rgba(13, 18, 31, 0.98) 100%)',
+            gap: '10px',
+            padding: '20px',
+            textAlign: 'center'
           }}>
             <div style={{
-              width: '40px',
-              height: '40px',
+              width: '46px',
+              height: '46px',
               borderRadius: '50%',
-              backgroundColor: 'rgba(255, 255, 255, 0.06)',
+              backgroundColor: 'rgba(255, 255, 255, 0.08)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              border: '1px solid rgba(255, 255, 255, 0.1)'
+              border: '1px solid rgba(255, 255, 255, 0.14)',
+              boxShadow: '0 4px 16px rgba(0, 0, 0, 0.4)'
             }}>
-              <ImageOff size={18} style={{ color: 'rgba(226, 232, 240, 0.6)' }} />
+              {getCategoryIcon(category)}
             </div>
-            <span style={{ fontSize: '0.725rem', fontWeight: 600, letterSpacing: '0.04em' }}>Photo Unavailable</span>
+            <div style={{
+              fontSize: '0.75rem',
+              fontWeight: 700,
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+              color: 'rgba(255, 255, 255, 0.85)'
+            }}>
+              {category} Experience
+            </div>
           </div>
         )}
 

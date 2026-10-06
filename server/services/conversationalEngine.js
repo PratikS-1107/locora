@@ -32,15 +32,32 @@ export const DEFAULT_CONVERSATION_STATE = {
  * Merge and sanitize structured state across turns.
  * Retains previously established constraints (destination, time, budget, category).
  */
+const NON_DESTINATION_WORDS = new Set([
+  'hi', 'hello', 'hey', 'hiya', 'howdy', 'yo', 'sup',
+  'ok', 'okay', 'yes', 'no', 'yeah', 'nope', 'sure', 'fine', 'good',
+  'thanks', 'thank you', 'thx', 'nice', 'cool', 'super', 'awesome', 'great', 'perfect',
+  'food', 'culture', 'nature', 'gems', 'activities', 'places', 'spots',
+  'help', 'locora', 'assistant'
+]);
+
 export const sanitizeAndMergeState = (prevState = {}, updates = {}) => {
+  const sanitizeDest = (dest) => {
+    if (!dest || typeof dest !== 'string') return null;
+    const clean = dest.trim().replace(/[,\.\?!]+$/g, '').trim();
+    if (clean.length <= 2 && clean.toLowerCase() !== 'ur') return null;
+    if (NON_DESTINATION_WORDS.has(clean.toLowerCase())) return null;
+    return clean;
+  };
+
+  const cleanUpdateDest = sanitizeDest(updates.destination);
+  const cleanPrevDest = sanitizeDest(prevState.destination);
+
   const merged = {
     location: {
       ...(prevState.location || {}),
       ...(updates.location || {})
     },
-    destination: updates.destination !== undefined && updates.destination !== null && updates.destination !== ''
-      ? updates.destination
-      : (prevState.destination || null),
+    destination: cleanUpdateDest || cleanPrevDest || null,
     availableMinutes: updates.availableMinutes !== undefined && updates.availableMinutes !== null && Number.isFinite(Number(updates.availableMinutes))
       ? Number(updates.availableMinutes)
       : (prevState.availableMinutes !== undefined && prevState.availableMinutes !== null && Number.isFinite(Number(prevState.availableMinutes)) ? Number(prevState.availableMinutes) : null),
@@ -70,13 +87,22 @@ const cleanCityCandidate = (str) => {
     .replace(/\s+(?:what|where|which|how|recommend|suggestions?|places|spots|activities|sights|things\s+to\s+do|please|for\s+me|today|now).*$/i, '')
     .trim();
 
-  if (s.length < 2) return null;
-  const genericWords = [
+  if (s.length <= 2 && s.toLowerCase() !== 'ur') return null;
+  if (NON_DESTINATION_WORDS.has(s.toLowerCase())) return null;
+
+  // Filter out question words, suggestions, conversational phrases from candidate cities
+  if (/^(?:what|where|which|how|who|why|when|can|could|should|would|will|is|are|tell|show|recommend|suggest|i\s*want|i\s*need|help)\b/i.test(str.trim())) {
+    return null;
+  }
+
+  const genericPhrases = [
     'my area', 'here', 'me', 'the city', 'the area', 'town', 'places',
     'spots', 'somewhere', 'anywhere', 'anything', 'something',
-    'recommend', 'recommend me', 'explore', 'discover', 'visit', 'activities'
+    'recommend', 'recommend me', 'explore', 'discover', 'visit', 'activities',
+    'can you do', 'what can you do', 'tell me about locora', 'who are you', 'how does this work',
+    'thank you', 'thanks', 'hello', 'help', 'nice', 'cool', 'super', 'awesome'
   ];
-  if (genericWords.includes(s.toLowerCase())) return null;
+  if (genericPhrases.includes(s.toLowerCase())) return null;
 
   // Title-case the city name
   return s.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
@@ -133,7 +159,7 @@ export const extractTravelIntentWithNvidia = async ({
 
   // Inspect previous assistant message in history to understand question-answer context
   const lastAssistantMsg = [...(history || [])].reverse().find(h => h.sender === 'assistant')?.text || '';
-  const isAskingLocation = /(?:city|area|where|destination|location|explore)/i.test(lastAssistantMsg);
+  const isAskingLocation = /(?:which\s+city|what\s+city|which\s+area|what\s+destination|which\s+destination|where\s+are\s+you|tell\s+me\s+a\s+city)/i.test(lastAssistantMsg);
   const isAskingBudget = /(?:budget|cost|price|how much|money|spend)/i.test(lastAssistantMsg);
   const isAskingTime = /(?:time|hours?|mins?|minutes?|duration|how long|window|schedule)/i.test(lastAssistantMsg);
 
@@ -194,16 +220,22 @@ export const extractTravelIntentWithNvidia = async ({
     }
   }
 
-  // 4. Extract destination from natural phrasing
+  const isGreeting = /^(hi|hello|hey|hiya|howdy|good\s+(morning|afternoon|evening|day)|greetings|sup|yo)[!.,\s]*$/i.test(trimmed);
+  const isAck = /^(thanks|thank\s+you|thx|nice|okay|ok|cool|awesome|great|super|perfect|that's\s+helpful|thats\s+helpful|understood|got\s+it|sounds\s+good|wonderful)[!.,\s]*$/i.test(trimmed);
+  const isAbout = /^(what\s+can\s+you\s+do|tell\s+me\s+about\s+locora|how\s+does\s+this\s+work|who\s+are\s+you|help(\s+me)?|what\s+is\s+locora)[?!.,\s]*$/i.test(trimmed);
+  const isExploreQuestion = /^(?:what\s+should\s+i\s+(?:explore|do|see|visit)|what\s+to\s+(?:explore|do|see|visit)|where\s+should\s+i\s+go)[?!.,\s]*$/i.test(trimmed);
+
+  // 4. Extract destination from natural phrasing (skip for pure greetings/about/ack/explore questions)
   let extractedDest = null;
-  const destPatterns = [
-    /(?:i\s*am\s*new\s*to|new\s*to)\s+([a-zA-Z\s]{2,25}?)(?:[,\.\?!]|\s+(?:what|where|which|how|recommend|and|with|for|having|under)|$)/i,
-    /(?:i\s*am\s*in|i'm\s*in|currently\s*in|staying\s*in|living\s*in)\s+([a-zA-Z\s]{2,25}?)(?:[,\.\?!]|\s+(?:what|where|which|how|recommend|and|with|for|having|under)|$)/i,
-    /(?:in|at|around|near|visiting|trip\s*to|travel\s*to|going\s*to)\s+([a-zA-Z\s]{2,25}?)(?:[,\.\?!]|\s+(?:what|where|which|how|recommend|and|with|for|having|under|places|spots)|$)/i,
-    /(?:explore|discover|visit)\s+([a-zA-Z\s]{2,25}?)(?:[,\.\?!]|\s+(?:what|where|which|how|recommend|and|with|for|having|under|places|spots)|$)/i,
-    /(?:what\s*can\s*i\s*(?:do|experience|see)\s*in|what\s*to\s*(?:do|experience|see)\s*in|places\s*in|places\s*around|spots\s*in|spots\s*around)\s+([a-zA-Z\s]{2,25}?)(?:[,\.\?!]|\s+(?:what|where|which|how|recommend|and|with|for)|$)/i,
-    /(?:show\s*me\s*places\s*(?:in|around|near))\s+([a-zA-Z\s]{2,25}?)(?:[,\.\?!]|\s+(?:what|where|which|how|recommend|and|with|for)|$)/i
-  ];
+  if (!isGreeting && !isAck && !isAbout && !isExploreQuestion) {
+    const destPatterns = [
+      /\b(?:i\s*am\s*new\s*to|new\s*to)\b\s+([a-zA-Z\s]{2,25}?)(?:[,\.\?!]|\s+(?:what|where|which|how|recommend|and|with|for|having|under)|$)/i,
+      /\b(?:i\s*am\s*in|i'm\s*in|currently\s*in|staying\s*in|living\s*in)\b\s+([a-zA-Z\s]{2,25}?)(?:[,\.\?!]|\s+(?:what|where|which|how|recommend|and|with|for|having|under)|$)/i,
+      /\b(?:in|at|around|near|visiting|trip\s*to|travel\s*to|going\s*to)\b\s+([a-zA-Z\s]{2,25}?)(?:[,\.\?!]|\s+(?:what|where|which|how|recommend|and|with|for|having|under|places|spots)|$)/i,
+      /\b(?:explore|discover|visit)\b\s+([a-zA-Z\s]{2,25}?)(?:[,\.\?!]|\s+(?:what|where|which|how|recommend|and|with|for|having|under|places|spots)|$)/i,
+      /\b(?:what\s*can\s*i\s*(?:do|experience|see)\s*in|what\s*to\s*(?:do|experience|see)\s*in|places\s*in|places\s*around|spots\s*in|spots\s*around)\b\s+([a-zA-Z\s]{2,25}?)(?:[,\.\?!]|\s+(?:what|where|which|how|recommend|and|with|for)|$)/i,
+      /\b(?:show\s*me\s*places\s*(?:in|around|near))\b\s+([a-zA-Z\s]{2,25}?)(?:[,\.\?!]|\s+(?:what|where|which|how|recommend|and|with|for)|$)/i
+    ];
 
   for (const pat of destPatterns) {
     const match = lower.match(pat);
@@ -227,13 +259,14 @@ export const extractTravelIntentWithNvidia = async ({
     }
   }
 
-  // Standalone short location response (e.g. user typed "Thane", "Kyoto", "Bandra", "Goa")
-  if (!extractedDest && !extractedBudget && !extractedMinutes && !extractedCategory) {
-    const wordCount = trimmed.split(/\s+/).length;
-    if (wordCount <= 3 && /^[a-zA-Z\s,.'-]+$/.test(trimmed)) {
-      const candidate = cleanCityCandidate(trimmed);
-      if (candidate && !['hi', 'hello', 'hey', 'help', 'yes', 'no', 'ok', 'okay', 'thanks', 'thank you', 'recommend', 'recommend me', 'explore', 'discover', 'places'].includes(trimmed.toLowerCase())) {
-        extractedDest = candidate;
+    // Standalone short location response (e.g. user typed "Thane", "Kyoto", "Bandra", "Goa")
+    if (!extractedDest && !extractedBudget && !extractedMinutes && !extractedCategory) {
+      const wordCount = trimmed.split(/\s+/).length;
+      if (wordCount <= 3 && /^[a-zA-Z\s,.'-]+$/.test(trimmed)) {
+        const candidate = cleanCityCandidate(trimmed);
+        if (candidate && !['hi', 'hello', 'hey', 'help', 'yes', 'no', 'ok', 'okay', 'thanks', 'thank you', 'recommend', 'recommend me', 'explore', 'discover', 'places'].includes(trimmed.toLowerCase())) {
+          extractedDest = candidate;
+        }
       }
     }
   }
@@ -258,9 +291,156 @@ export const extractTravelIntentWithNvidia = async ({
   );
   const hasLocation = hasDestination || hasGps;
 
-  // Decide action:
-  // If we have ANY location, immediately proceed to recommend!
-  // Only ask for location if there is literally NO location anywhere (no destination, no GPS).
+  // Conversational Intent Classification:
+  // Distinguish pure conversation (greetings, gratitude, about, context sharing)
+  // from genuine recommendation triggers.
+
+  // 1. Pure Greetings ("Hi", "Hello", "Hey", "Good morning", etc.)
+  const greetingPattern = /^(hi|hello|hey|hiya|howdy|good\s+(morning|afternoon|evening|day)|greetings|sup|yo)[!.,\s]*$/i;
+  if (greetingPattern.test(trimmed)) {
+    return {
+      isTravel: true,
+      updatedState: mergedState,
+      action: 'conversational_reply',
+      reply: "Hi! What would you like to explore today? Tell me a city, or what kind of experiences you're looking for.",
+      destination: mergedState.destination,
+      category: mergedState.category || 'local',
+      availableMinutes: mergedState.availableMinutes,
+      budget: mergedState.budget,
+      currency: mergedState.currency || 'INR',
+      searchKeywords: trimmed,
+      userSummary: trimmed
+    };
+  }
+
+  // 2. Gratitude / Acknowledgment ("Thanks", "Nice", "Okay", "That's helpful", etc.)
+  const ackPattern = /^(thanks|thank\s+you|thx|nice|okay|ok|cool|awesome|great|super|perfect|that's\s+helpful|thats\s+helpful|understood|got\s+it|sounds\s+good|wonderful)[!.,\s]*$/i;
+  if (ackPattern.test(trimmed)) {
+    return {
+      isTravel: true,
+      updatedState: mergedState,
+      action: 'conversational_reply',
+      reply: "You're welcome! Would you like more details on any of these spots, or another category or destination to explore?",
+      destination: mergedState.destination,
+      category: mergedState.category || 'local',
+      availableMinutes: mergedState.availableMinutes,
+      budget: mergedState.budget,
+      currency: mergedState.currency || 'INR',
+      searchKeywords: trimmed,
+      userSummary: trimmed
+    };
+  }
+
+  // 3. About Locora / Capabilities ("What can you do?", "Tell me about Locora", etc.)
+  const aboutPattern = /^(what\s+can\s+you\s+do|tell\s+me\s+about\s+locora|how\s+does\s+this\s+work|who\s+are\s+you|help(\s+me)?|what\s+is\s+locora)[?!.,\s]*$/i;
+  if (aboutPattern.test(trimmed)) {
+    return {
+      isTravel: true,
+      updatedState: mergedState,
+      action: 'conversational_reply',
+      reply: "I help you discover verified local, cultural, food, and nature experiences tailored to your available time and budget. Tell me where you are or what destination you'd like to explore!",
+      destination: mergedState.destination,
+      category: mergedState.category || 'local',
+      availableMinutes: mergedState.availableMinutes,
+      budget: mergedState.budget,
+      currency: mergedState.currency || 'INR',
+      searchKeywords: trimmed,
+      userSummary: trimmed
+    };
+  }
+
+  // 4. Context Sharing: "I'm new to <City>", "I am in <City>" without explicit recommendation request
+  const contextSharingPattern = /^(?:i\s*am\s*new\s*to|i'm\s*new\s*to|new\s*to|just\s+arrived\s+in)\s+([a-zA-Z\s]{2,25})[.?!]?$/i;
+  const contextSharingMatch = trimmed.match(contextSharingPattern);
+  if (contextSharingMatch) {
+    const city = cleanCityCandidate(contextSharingMatch[1]) || contextSharingMatch[1].trim();
+    mergedState.destination = city;
+    return {
+      isTravel: true,
+      updatedState: mergedState,
+      action: 'conversational_reply',
+      reply: `Welcome to ${city}! Are you looking for authentic local food, cultural heritage, nature spots, or something else to explore?`,
+      destination: city,
+      category: mergedState.category || 'local',
+      availableMinutes: mergedState.availableMinutes,
+      budget: mergedState.budget,
+      currency: mergedState.currency || 'INR',
+      searchKeywords: trimmed,
+      userSummary: trimmed
+    };
+  }
+
+  // 4.5 Conversational follow-up: "What should I explore?"
+  if (isExploreQuestion) {
+    const dest = mergedState.destination || clientContext.location?.city;
+    const destStr = dest ? ` in ${dest}` : '';
+    return {
+      isTravel: true,
+      updatedState: mergedState,
+      action: 'conversational_reply',
+      reply: `You could explore authentic local food, cultural heritage spots, scenic nature, or hidden gems${destStr}. Which of these sounds most interesting to you?`,
+      destination: mergedState.destination,
+      category: mergedState.category || 'local',
+      availableMinutes: mergedState.availableMinutes,
+      budget: mergedState.budget,
+      currency: mergedState.currency || 'INR',
+      searchKeywords: trimmed,
+      userSummary: trimmed
+    };
+  }
+
+  // 5. Genuine Recommendation Intent Detection
+  // Trigger recommendations when:
+  // - User asks for recommendations/places/spots/things to do
+  // - User specifies time or budget constraints
+  // - User specifies an explicit category (food, culture, nature, etc.)
+  // - Assistant previously asked what kind of experiences user is looking for
+  const hasRecommendationKeywords = /(?:recommend|suggestions?|where\s+should\s+i\s+go|what\s+(?:can|should)\s+i\s+(?:do|see|visit)|places\s+to\s+(?:visit|see|eat|go)|show\s+me\s+places|find\s+(?:places|spots|food|cafes|temples|restaurants)|things\s+to\s+do|must\s+visit|spots\s+(?:in|around|near)|places\s+(?:in|around|near))/i.test(lower);
+  const hasExplicitConstraints = extractedMinutes !== null || extractedBudget !== null;
+  const hasExplicitCategory = extractedCategory !== null;
+  const wasAskedPreferences = history.some(h => h.sender === 'assistant' && /(?:what would you like to explore|what kind of experiences|looking for)/i.test(h.text));
+
+  const isRecommendationIntent = hasRecommendationKeywords || hasExplicitConstraints || (hasExplicitCategory && (hasLocation || wasAskedPreferences));
+
+  // If user just named a city after assistant asked for city, ask what they want to explore in that city
+  if (!isRecommendationIntent && isAskingLocation && extractedDest) {
+    return {
+      isTravel: true,
+      updatedState: mergedState,
+      action: 'conversational_reply',
+      reply: `Got it, ${extractedDest}! What kind of experiences are you in the mood for — authentic local food, cultural heritage, nature, or hidden gems?`,
+      destination: extractedDest,
+      category: mergedState.category || 'local',
+      availableMinutes: mergedState.availableMinutes,
+      budget: mergedState.budget,
+      currency: mergedState.currency || 'INR',
+      searchKeywords: trimmed,
+      userSummary: trimmed
+    };
+  }
+
+  // If user just typed general conversational text that is not a recommendation request:
+  if (!isRecommendationIntent) {
+    const targetDest = mergedState.destination || clientContext.location?.city;
+    const destContextStr = targetDest ? ` in ${targetDest}` : '';
+    return {
+      isTravel: true,
+      updatedState: mergedState,
+      action: 'conversational_reply',
+      reply: `I can recommend verified spots${destContextStr}! What kind of places are you looking for, and do you have a specific time or budget?`,
+      destination: mergedState.destination,
+      category: mergedState.category || 'local',
+      availableMinutes: mergedState.availableMinutes,
+      budget: mergedState.budget,
+      currency: mergedState.currency || 'INR',
+      searchKeywords: trimmed,
+      userSummary: trimmed
+    };
+  }
+
+  // Decide recommendation action:
+  // If we have ANY location, proceed to recommend!
+  // Only ask for location if there is literally NO location anywhere.
   let action = 'recommend';
   let followUpQuestion = null;
 

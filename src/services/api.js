@@ -769,6 +769,11 @@ export const getExploreTrips = async () => {
 export const getTripById = async (tripId) => {
   if (!tripId) return { data: null, error: 'No trip ID provided' };
 
+  const readyMade = READY_MADE_TRIPS.find(t => t.id === tripId);
+  if (readyMade) {
+    return { data: normalizeTrip(readyMade), error: null };
+  }
+
   if (!isSupabaseConfigured() || !isValidUUID(tripId)) {
     const trips = getLocalTrips();
     const found = trips.find(t => t.id === tripId) || null;
@@ -2683,7 +2688,29 @@ export const addRecommendationToTripDay = async ({
   return await createActivity(payload);
 };
 
-// --- CONVERSATIONAL DISCOVERY SERVICE (Powered by NVIDIA) ---
+// --- LOCORA ASSISTANT CONVERSATIONAL SERVICE (Powered by NVIDIA & Locora Engine) ---
+
+const CONVERSATIONAL_GREETING_REGEX = /^(hi|hello|hey|hiya|howdy|good\s+(morning|afternoon|evening|day)|greetings|sup|yo)[!.,\s]*$/i;
+const CONVERSATIONAL_ACK_REGEX = /^(thanks|thank\s+you|thx|nice|okay|ok|cool|awesome|great|super|perfect|that's\s+helpful|thats\s+helpful|understood|got\s+it|sounds\s+good|wonderful)[!.,\s]*$/i;
+const CONVERSATIONAL_ABOUT_REGEX = /^(what\s+can\s+you\s+do|tell\s+me\s+about\s+locora|how\s+does\s+this\s+work|who\s+are\s+you|help(\s+me)?|what\s+is\s+locora)[?!.,\s]*$/i;
+const CONVERSATIONAL_CONTEXT_REGEX = /^(?:i\s*am\s*new\s*to|i'm\s*new\s*to|new\s*to|just\s+arrived\s+in|i\s*am\s*in|i'm\s*in|staying\s*in|living\s*in)\s+([a-zA-Z\s]{2,25})[.?!]?$/i;
+const CONVERSATIONAL_EXPLORE_REGEX = /^(?:what\s+should\s+i\s+explore|what\s+should\s+i\s+do|what\s+to\s+do|what\s+to\s+explore|where\s+should\s+i\s+go)[?!.,\s]*$/i;
+
+const NON_DESTINATION_WORDS = new Set([
+  'hi', 'hello', 'hey', 'hiya', 'howdy', 'yo', 'sup',
+  'ok', 'okay', 'yes', 'no', 'yeah', 'nope', 'sure', 'fine', 'good',
+  'thanks', 'thank you', 'thx', 'nice', 'cool', 'super', 'awesome', 'great', 'perfect',
+  'food', 'culture', 'nature', 'gems', 'activities', 'places', 'spots',
+  'help', 'locora', 'assistant'
+]);
+
+export const sanitizeDestination = (dest) => {
+  if (!dest || typeof dest !== 'string') return null;
+  const cleaned = dest.trim().replace(/[,\.\?!]+$/g, '').trim();
+  if (cleaned.length <= 2 && cleaned.toLowerCase() !== 'ur') return null;
+  if (NON_DESTINATION_WORDS.has(cleaned.toLowerCase())) return null;
+  return cleaned.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+};
 
 export const sendConversationalDiscoveryMessage = async ({
   message,
@@ -2692,16 +2719,111 @@ export const sendConversationalDiscoveryMessage = async ({
   activeTrip = null,
   conversationState = null
 }) => {
-  if (!message || !message.trim()) {
+  const trimmed = (message || '').trim();
+  if (!trimmed) {
     return { success: false, reply: 'Please provide a message.', recommendations: [], conversationState };
   }
 
+  // Ensure current state has no polluted destination like "Hi"
+  let cleanState = {
+    ...(conversationState || {}),
+    destination: sanitizeDestination(conversationState?.destination)
+  };
+
+  const lower = trimmed.toLowerCase();
+
+  // 1. Pure Greeting: Never recommend, never treat as destination, reply and wait
+  if (CONVERSATIONAL_GREETING_REGEX.test(trimmed)) {
+    return {
+      success: true,
+      reply: "Hi! What would you like to explore today? Tell me a city, or what kind of experiences you're looking for.",
+      recommendations: [],
+      conversationState: cleanState
+    };
+  }
+
+  // 2. Pure Gratitude / Acknowledgment
+  if (CONVERSATIONAL_ACK_REGEX.test(trimmed)) {
+    return {
+      success: true,
+      reply: "You're welcome! Would you like more details on any of these spots, or another category or destination to explore?",
+      recommendations: [],
+      conversationState: cleanState
+    };
+  }
+
+  // 3. About Locora / Capabilities
+  if (CONVERSATIONAL_ABOUT_REGEX.test(trimmed)) {
+    return {
+      success: true,
+      reply: "I can help you discover verified local spots, cultural landmarks, food destinations, and activities tailored to your schedule and budget. Just share a city or what kind of places you'd like to explore!",
+      recommendations: [],
+      conversationState: cleanState
+    };
+  }
+
+  // 4. Context Sharing: "I'm new to Thane", "I just arrived in Goa"
+  const contextMatch = trimmed.match(CONVERSATIONAL_CONTEXT_REGEX);
+  if (contextMatch) {
+    const rawCity = contextMatch[1].trim();
+    const city = sanitizeDestination(rawCity);
+    if (city) {
+      cleanState = { ...cleanState, destination: city };
+      return {
+        success: true,
+        reply: `Nice! What are you interested in — food, culture, nature, hidden gems, or something to do in ${city}?`,
+        recommendations: [],
+        conversationState: cleanState
+      };
+    }
+  }
+
+  // 5. Conversational follow-up: "What should I explore?"
+  if (CONVERSATIONAL_EXPLORE_REGEX.test(trimmed)) {
+    const dest = cleanState.destination || activeTrip?.destination || location?.city;
+    const destStr = dest ? ` in ${dest}` : '';
+    return {
+      success: true,
+      reply: `You could explore authentic local food, cultural heritage spots, scenic nature, or hidden gems${destStr}. Which of these sounds most interesting to you?`,
+      recommendations: [],
+      conversationState: cleanState
+    };
+  }
+
+  // 6. Check if this is a recommendation intent or conversational follow-up
+  const isDirectRecIntent = /(?:recommend|suggestions?|where\s+should\s+i\s+go|what\s+(?:can|should)\s+i\s+(?:do|see|visit)|places\s+to\s+(?:visit|see|eat|go)|show\s+me\s+places|find\s+(?:places|spots|food|cafes|temples|restaurants)|things\s+to\s+do|must\s+visit|spots\s+(?:in|around|near)|places\s+(?:in|around|near))/i.test(lower);
+  const hasConstraints = /(?:\d+\s*(?:hour|hr|hrs|minute|min|mins)|₹|\$|rs\.?|inr|budget)/i.test(lower);
+  const isCategoryChoice = /^(food|culture|cultural|nature|hidden\s*gems?|workshops?|activities|adventure)[!.,\s]*$/i.test(trimmed);
+
+  // If user has NOT expressed recommendation intent, and just typed a standalone city name
+  if (!isDirectRecIntent && !hasConstraints && !isCategoryChoice && !cleanState.destination && !activeTrip?.destination) {
+    const words = trimmed.split(/\s+/);
+    if (words.length <= 3 && /^[a-zA-Z\s,.'-]+$/.test(trimmed)) {
+      const cityCand = sanitizeDestination(trimmed);
+      if (cityCand) {
+        cleanState = { ...cleanState, destination: cityCand };
+        return {
+          success: true,
+          reply: `Got it, ${cityCand}! What kind of experiences are you in the mood for — authentic local food, cultural heritage, nature, or hidden gems?`,
+          recommendations: [],
+          conversationState: cleanState
+        };
+      }
+    }
+  }
+
+  // If category choice is provided (e.g. "food")
+  if (isCategoryChoice) {
+    cleanState.category = lower.includes('food') ? 'food' : lower.includes('cultur') ? 'cultural' : lower.includes('nature') ? 'nature' : lower.includes('gem') ? 'hidden gems' : 'local';
+  }
+
+  // 7. Proceed to recommendation request
   const payload = {
-    message: message.trim(),
+    message: trimmed,
     history,
     location,
     activeTrip,
-    conversationState
+    conversationState: cleanState
   };
 
   try {
@@ -2713,13 +2835,17 @@ export const sendConversationalDiscoveryMessage = async ({
 
     if (res.ok) {
       const data = await res.json();
+      if (data.conversationState?.destination) {
+        data.conversationState.destination = sanitizeDestination(data.conversationState.destination);
+      }
       return data;
     } else {
       const errData = await res.json().catch(() => null);
       return {
         success: false,
-        reply: errData?.reply || 'Unable to connect to Conversational Discovery service.',
-        recommendations: []
+        reply: errData?.reply || 'Unable to connect to Locora Assistant.',
+        recommendations: [],
+        conversationState: cleanState
       };
     }
   } catch (err) {
@@ -2727,7 +2853,8 @@ export const sendConversationalDiscoveryMessage = async ({
     return {
       success: false,
       reply: 'Network connection issue. Please check your connection and try again.',
-      recommendations: []
+      recommendations: [],
+      conversationState: cleanState
     };
   }
 };
@@ -3191,6 +3318,109 @@ export const READY_MADE_TRIPS = [
         ]
       }
     ]
+  },
+  {
+    id: 'dest-douro-vineyards',
+    title: 'Douro Terraced Pathways',
+    name: 'Douro Terraced Pathways',
+    eyebrow: 'WALK THE ANCIENT RIVER RIDGES',
+    destination: 'Porto Region, Portugal',
+    country: 'Portugal',
+    country_code: 'PT',
+    cover_image_url: 'https://images.unsplash.com/photo-1555881400-74d7acaacd8b?auto=format&fit=crop&w=1400&q=85',
+    cover_image: 'https://images.unsplash.com/photo-1555881400-74d7acaacd8b?auto=format&fit=crop&w=1400&q=85',
+    description: 'Follow handmade granite terraces carved into sun-drenched valley cliffs. Harvest seasonal olives with family vintners, listen to old river ballads, and find stillness along hillside paths.',
+    duration: '5 Days',
+    days_count: 5,
+    budget: 42000,
+    currency: 'EUR',
+    is_ready_made: true,
+    days: [
+      {
+        day: 1,
+        title: 'Arrival in Porto & Douro Valley Train Ride',
+        activities: [
+          { start_time: '10:00 AM', title: 'Historic Linha do Douro Scenic Rail', location: 'Porto São Bento to Pinhão', estimated_cost: 25, description: 'Ride along emerald waters through UNESCO terraced slopes.', category: 'Sightseeing' },
+          { start_time: '04:00 PM', title: 'Check-in at Hillside Quinta Estate', location: 'Pinhão', estimated_cost: 0, description: 'Settle into vineyard estate quarters overlooking the river.', category: 'Culture' },
+          { start_time: '07:30 PM', title: 'Estate Wine Tasting & Farm Dinner', location: 'Quinta do Bomfim', estimated_cost: 65, description: 'Seasonal Portuguese dining paired with aged vintage ports.', category: 'Food' }
+        ]
+      },
+      {
+        day: 2,
+        title: 'Ancient Granite Ridge Trail & Olive Groves',
+        activities: [
+          { start_time: '08:30 AM', title: 'Passadiços do Douro Ridge Walk', location: 'Vale de Mendiz', estimated_cost: 0, description: 'Hike ancient dry-stone walled footpaths high above the river.', category: 'Nature' },
+          { start_time: '01:00 PM', title: 'Rustic Picnic under Shaded Carob Trees', location: 'Casal de Loivos', estimated_cost: 30, description: 'Fresh sourdough, Serra da Estrela cheese, and harvested olives.', category: 'Food' }
+        ]
+      },
+      {
+        day: 3,
+        title: 'Traditional Rabelo Boat Voyage to Tua',
+        activities: [
+          { start_time: '09:30 AM', title: 'Wooden Rabelo River Navigation', location: 'Pinhão Jetty', estimated_cost: 40, description: 'Glide along untamed canyon narrows toward Tua gorge.', category: 'Adventure' }
+        ]
+      }
+    ]
+  },
+  {
+    id: 'dest-himalayan-valley',
+    title: 'Himalayan Valley Sanctuaries',
+    name: 'Himalayan Valley Sanctuaries',
+    eyebrow: 'SACRED CIRQUES & PRAYER CLIFFS',
+    destination: 'Langtang Valley, Nepal',
+    country: 'Nepal',
+    country_code: 'NP',
+    cover_image_url: 'https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&w=1400&q=85',
+    cover_image: 'https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&w=1400&q=85',
+    description: 'Traverse glacial meadows dotted with rhododendrons and ancient Tibetan monasteries. Share hot butter tea with high-altitude yak herders and witness golden sunrise across eternal snow peaks.',
+    duration: '7 Days',
+    days_count: 7,
+    budget: 35000,
+    currency: 'NPR',
+    is_ready_made: true,
+    days: [
+      {
+        day: 1,
+        title: 'Syabrubesi to Lama Hotel River Trail',
+        activities: [
+          { start_time: '07:30 AM', title: 'Langtang Khola River Crossing', location: 'Syabrubesi', estimated_cost: 0, description: 'Suspension bridge walk into pristine oak and bamboo canopy.', category: 'Nature' },
+          { start_time: '02:00 PM', title: 'Lama Hotel Wilderness Teahouse Rest', location: 'Lama Hotel', estimated_cost: 15, description: 'Warm ginger lemon tea and rest in tranquil river gorge.', category: 'Culture' }
+        ]
+      },
+      {
+        day: 2,
+        title: 'Mundu to Kyanjin Gompa Sacred Sanctuary',
+        activities: [
+          { start_time: '08:00 AM', title: 'Langtang Valley Ascent & Mani Walls', location: 'Mundu', estimated_cost: 0, description: 'Pass sacred carved prayer stones with views of Langtang Lirung.', category: 'Culture' }
+        ]
+      }
+    ]
+  },
+  {
+    id: 'dest-andean-cloudforest',
+    title: 'Andean Cloud Forest Trails',
+    name: 'Andean Cloud Forest Trails',
+    eyebrow: 'MISTED INCA STEPS & SACRED RIDGEWAYS',
+    destination: 'Sacred Valley, Peru',
+    country: 'Peru',
+    country_code: 'PE',
+    cover_image_url: 'https://images.unsplash.com/photo-1526392060635-9d6019884377?auto=format&fit=crop&w=1400&q=85',
+    cover_image: 'https://images.unsplash.com/photo-1526392060635-9d6019884377?auto=format&fit=crop&w=1400&q=85',
+    description: 'Climb emerald terraced peaks wrapped in morning mist. Discover hidden orchids, cascading mountain torrents, and forgotten stone citadels preserved high in the Peruvian Andes.',
+    duration: '6 Days',
+    days_count: 6,
+    budget: 48000,
+    currency: 'PEN',
+    is_ready_made: true,
+    days: [
+      {
+        day: 1,
+        title: 'Pisac Ruins & Sacred Valley Artisan Market',
+        activities: [
+          { start_time: '09:00 AM', title: 'Pisac Cliffside Sun Temple Exploration', location: 'Pisac', estimated_cost: 30, description: 'Panoramic views across sacred agricultural terraces.', category: 'Culture' }
+        ]
+      }
+    ]
   }
 ];
 
@@ -3200,9 +3430,7 @@ const getLocalWishlist = (userId = 'guest') => {
   if (stored) {
     try { return JSON.parse(stored); } catch (e) { console.error(e); }
   }
-  const defaults = ['rmt-kyoto-7d', 'rmt-goa-5d', 'exp-goa-1'];
-  localStorage.setItem(key, JSON.stringify(defaults));
-  return defaults;
+  return [];
 };
 
 const setLocalWishlist = (userId, ids) => {
@@ -3212,8 +3440,10 @@ const setLocalWishlist = (userId, ids) => {
 export const getSavedWishlistIds = async (userId) => {
   if (!userId) return { data: [], error: null };
 
+  const localSaved = getLocalWishlist(userId) || [];
+
   if (!isSupabaseConfigured() || !isValidUUID(userId)) {
-    return { data: getLocalWishlist(userId), error: null };
+    return { data: localSaved, error: null };
   }
 
   try {
@@ -3224,14 +3454,15 @@ export const getSavedWishlistIds = async (userId) => {
 
     if (error) {
       console.error('Supabase getSavedWishlistIds error:', error.message);
-      throw error;
+      return { data: localSaved, error: null };
     }
 
-    const ids = (data || []).map(r => r.trip_id).filter(Boolean);
-    return { data: ids, error: null };
+    const supabaseIds = (data || []).map(r => r.trip_id).filter(Boolean);
+    const combined = Array.from(new Set([...supabaseIds, ...localSaved]));
+    return { data: combined, error: null };
   } catch (err) {
     console.error('getSavedWishlistIds catch:', err);
-    throw err;
+    return { data: localSaved, error: null };
   }
 };
 
@@ -3300,13 +3531,13 @@ export const toggleSaveWishlistItem = async (itemOrId, userId) => {
 export const getWishlistTrips = async (userId) => {
   if (!userId) return { data: [], error: null };
 
+  const localSavedIds = getLocalWishlist(userId) || [];
+  const wishlistedReadyMade = READY_MADE_TRIPS.filter(t => localSavedIds.includes(t.id));
+
   if (!isSupabaseConfigured() || !isValidUUID(userId)) {
-    const wishlistIds = getLocalWishlist(userId);
-    const wishlistedReadyMade = READY_MADE_TRIPS.filter(t => wishlistIds.includes(t.id));
-    const exploreItems = VERIFIED_INITIAL_EXPERIENCES.filter(e => wishlistIds.includes(e.id));
     const userTrips = (await getUserTrips(userId)).data || [];
     const userWishlistTrips = userTrips.filter(t => t.is_wishlist);
-    return { data: [...wishlistedReadyMade, ...exploreItems, ...userWishlistTrips].map(normalizeTrip), error: null };
+    return { data: [...wishlistedReadyMade, ...userWishlistTrips].map(normalizeTrip), error: null };
   }
 
   try {
@@ -3318,7 +3549,7 @@ export const getWishlistTrips = async (userId) => {
 
     if (savedErr) {
       console.error('Supabase getWishlistTrips saved_trips error:', savedErr.message);
-      throw savedErr;
+      return { data: wishlistedReadyMade.map(t => ({ ...normalizeTrip(t), is_wishlist: true })), error: null };
     }
 
     const tripIds = (savedRows || []).map(r => r.trip_id).filter(isValidUUID);
@@ -3332,19 +3563,22 @@ export const getWishlistTrips = async (userId) => {
 
       if (tripsErr) {
         console.error('Supabase getWishlistTrips trips error:', tripsErr.message);
-        throw tripsErr;
+      } else {
+        savedTrips = (tripsData || []).map(t => ({
+          ...normalizeTrip(t),
+          is_wishlist: true
+        }));
       }
-
-      savedTrips = (tripsData || []).map(t => ({
-        ...normalizeTrip(t),
-        is_wishlist: true
-      }));
     }
 
-    return { data: savedTrips, error: null };
+    const allWishlist = [
+      ...wishlistedReadyMade.map(t => ({ ...normalizeTrip(t), is_wishlist: true })),
+      ...savedTrips
+    ];
+    return { data: allWishlist, error: null };
   } catch (err) {
     console.error('getWishlistTrips catch:', err);
-    throw err;
+    return { data: wishlistedReadyMade.map(t => ({ ...normalizeTrip(t), is_wishlist: true })), error: null };
   }
 };
 
@@ -3585,7 +3819,42 @@ export const searchPublicTrips = (tripsOrQuery = [], queryOrDuration = '', filte
 };
 
 export const getTripItinerary = async (tripId) => {
-  if (!tripId || !isValidUUID(tripId)) {
+  if (!tripId) {
+    return { data: { days: [], activities: [] }, error: 'No trip ID provided' };
+  }
+
+  // Check if it's a ready-made or editorial template trip
+  const readyMade = READY_MADE_TRIPS.find(t => t.id === tripId);
+  if (readyMade && Array.isArray(readyMade.days)) {
+    const activities = [];
+    const days = readyMade.days.map((d, idx) => {
+      const dayId = `${tripId}-day-${d.day || idx + 1}`;
+      const dayActivities = (d.activities || []).map((a, actIdx) => {
+        const act = {
+          id: `${dayId}-act-${actIdx + 1}`,
+          itinerary_day_id: dayId,
+          title: a.title,
+          description: a.description || '',
+          location: a.location || '',
+          start_time: a.start_time || '09:00 AM',
+          estimated_cost: a.estimated_cost || 0,
+          category: a.category || 'Sightseeing'
+        };
+        activities.push(act);
+        return act;
+      });
+      return {
+        id: dayId,
+        trip_id: tripId,
+        day_number: d.day || idx + 1,
+        title: d.title || `Day ${d.day || idx + 1}`,
+        activities: dayActivities
+      };
+    });
+    return { data: { days, activities }, error: null };
+  }
+
+  if (!isValidUUID(tripId)) {
     console.warn('getTripItinerary called with non-UUID tripId:', tripId);
     return { data: { days: [], activities: [] }, error: null };
   }

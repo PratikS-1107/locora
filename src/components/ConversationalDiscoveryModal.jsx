@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   MessageCircle,
   X,
@@ -13,7 +14,8 @@ import {
   Trash2,
   Check,
   RotateCcw,
-  Coins
+  Coins,
+  Lock
 } from 'lucide-react';
 import {
   sendConversationalDiscoveryMessage,
@@ -46,6 +48,8 @@ const INITIAL_CONVERSATION_STATE = {
 
 const ConversationalDiscoveryModal = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([
     {
@@ -120,6 +124,9 @@ const ConversationalDiscoveryModal = () => {
             if (active.destination) setLocationName(active.destination);
           }
         } catch (_) {}
+      } else {
+        setWishlistIds([]);
+        setActiveTrip(null);
       }
     };
     loadUserData();
@@ -148,6 +155,11 @@ const ConversationalDiscoveryModal = () => {
   };
 
   const handleSendMessage = async (textToSend = null) => {
+    if (!user) {
+      navigate('/login', { state: { from: location.pathname } });
+      return;
+    }
+
     const text = (textToSend || inputMessage).trim();
     if (!text || isLoading) return;
 
@@ -233,6 +245,10 @@ const ConversationalDiscoveryModal = () => {
 
   const handleAddRecToItinerary = async (rec) => {
     const recId = rec.placeId || rec.id;
+    if (!user?.id) {
+      showToast('Please log in to add places to your itinerary.');
+      return;
+    }
     if (activeTrip?.id) {
       try {
         await addRecommendationToItinerary(rec, activeTrip.id);
@@ -242,8 +258,7 @@ const ConversationalDiscoveryModal = () => {
         showToast('Unable to add activity right now.');
       }
     } else {
-      setAddedRecIds(prev => [...prev, recId]);
-      showToast(`Added "${rec.name}" to itinerary.`);
+      showToast('Select an active trip in My Trips to add places to your itinerary.');
     }
   };
 
@@ -280,9 +295,15 @@ const ConversationalDiscoveryModal = () => {
       {!isOpen && (
         <button
           className="conv-floating-btn"
-          onClick={() => setIsOpen(true)}
-          title="Conversational Discovery"
-          aria-label="Open Conversational Discovery"
+          onClick={() => {
+            if (!user) {
+              navigate('/login', { state: { from: location.pathname } });
+              return;
+            }
+            setIsOpen(true);
+          }}
+          title="Locora Assistant"
+          aria-label="Open Locora Assistant"
         >
           <MessageCircle size={24} strokeWidth={2.2} />
         </button>
@@ -303,7 +324,7 @@ const ConversationalDiscoveryModal = () => {
           className="conv-panel"
           role="dialog"
           aria-modal="true"
-          aria-labelledby="conversational-discovery-title"
+          aria-labelledby="locora-assistant-title"
         >
           {/* In-panel Action Notification Toast */}
           {toastMsg && (
@@ -346,48 +367,42 @@ const ConversationalDiscoveryModal = () => {
           >
             <div>
               <h3
-                id="conversational-discovery-title"
+                id="locora-assistant-title"
                 style={{
-                  fontSize: '1rem',
+                  fontSize: '1.05rem',
+                  fontFamily: 'Sora',
                   fontWeight: 700,
                   margin: 0,
                   color: 'var(--text-primary)',
                   letterSpacing: '-0.01em'
                 }}
               >
-                Conversational Discovery
+                Locora Assistant
               </h3>
-              <p
-                style={{
-                  fontSize: '0.78rem',
-                  color: 'var(--text-secondary)',
-                  margin: '2px 0 0 0'
-                }}
-              >
-                Find places that fit your time and budget.
-              </p>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <button
-                onClick={handleClearChat}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--text-muted)',
-                  cursor: 'pointer',
-                  padding: '6px',
-                  borderRadius: '6px',
-                  display: 'flex',
-                  alignItems: 'center'
-                }}
-                title="Clear Chat & Context"
-                aria-label="Clear Chat and Reset Context"
-                onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--danger)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; }}
-              >
-                <Trash2 size={16} />
-              </button>
+              {user && (
+                <button
+                  onClick={handleClearChat}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--text-muted)',
+                    cursor: 'pointer',
+                    padding: '6px',
+                    borderRadius: '6px',
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}
+                  title="Clear Chat & Context"
+                  aria-label="Clear Chat and Reset Context"
+                  onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--danger)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; }}
+                >
+                  <Trash2 size={16} />
+                </button>
+              )}
 
               <button
                 onClick={() => setIsOpen(false)}
@@ -418,6 +433,50 @@ const ConversationalDiscoveryModal = () => {
             </div>
           </div>
 
+          {!user ? (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '48px 24px',
+              textAlign: 'center',
+              flex: 1,
+              backgroundColor: 'var(--bg-surface)'
+            }}>
+              <div style={{
+                width: '56px',
+                height: '56px',
+                borderRadius: '50%',
+                backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: '16px',
+                border: '1px solid rgba(56, 189, 248, 0.25)'
+              }}>
+                <Lock size={26} style={{ color: '#38bdf8' }} />
+              </div>
+              <h4 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 8px 0' }}>
+                Sign in to use Locora Assistant
+              </h4>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '0 0 24px 0', maxWidth: '300px', lineHeight: 1.5 }}>
+                Locora Assistant connects with your active journey, preferences, and schedule to recommend authentic places.
+              </p>
+              <button
+                onClick={() => {
+                  setIsOpen(false);
+                  navigate('/login', { state: { from: location.pathname } });
+                }}
+                className="btn btn-primary"
+                style={{ padding: '10px 24px', fontSize: '0.875rem', fontWeight: 600, borderRadius: '8px' }}
+              >
+                Sign In to Continue
+              </button>
+            </div>
+          ) : (
+            <>
+
           {/* Active Context Memory Chips (When State is retained) */}
           {hasActiveContext && (
             <div
@@ -435,7 +494,7 @@ const ConversationalDiscoveryModal = () => {
               <span style={{ fontSize: '0.675rem', color: 'var(--text-muted)', fontWeight: 600 }}>
                 Active context:
               </span>
-              {conversationState.destination && (
+              {conversationState.destination && !['hi', 'hello', 'hey', 'thanks', 'ok', 'okay', 'good'].includes(conversationState.destination.toLowerCase()) && (
                 <span style={{ fontSize: '0.675rem', padding: '2px 7px', borderRadius: '4px', backgroundColor: 'rgba(59, 130, 246, 0.15)', color: '#93c5fd', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
                   <MapPin size={10} /> {conversationState.destination}
                 </span>
@@ -679,6 +738,8 @@ const ConversationalDiscoveryModal = () => {
               <Send size={14} />
             </button>
           </div>
+            </>
+          )}
         </div>
       )}
     </>

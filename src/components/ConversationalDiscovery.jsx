@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Send,
   MapPin,
@@ -14,7 +15,8 @@ import {
   User,
   Trash2,
   Check,
-  MessageCircle
+  MessageCircle,
+  Lock
 } from 'lucide-react';
 import {
   sendConversationalDiscoveryMessage,
@@ -50,6 +52,8 @@ const ConversationalDiscovery = ({
   onAddToTrip = null
 }) => {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [messages, setMessages] = useState([
     {
       id: 'welcome',
@@ -91,6 +95,8 @@ const ConversationalDiscovery = ({
           const res = await getSavedWishlistIds(user.id);
           setWishlistIds(res.data || []);
         } catch (_) {}
+      } else {
+        setWishlistIds([]);
       }
     };
     loadWishlist();
@@ -119,6 +125,11 @@ const ConversationalDiscovery = ({
   };
 
   const handleSendMessage = async (textToSend = null) => {
+    if (!user) {
+      navigate('/login', { state: { from: location.pathname } });
+      return;
+    }
+
     const text = (textToSend || inputMessage).trim();
     if (!text || isLoading) return;
 
@@ -210,6 +221,11 @@ const ConversationalDiscovery = ({
       return;
     }
 
+    if (!user?.id) {
+      showToast('Please log in to add places to your itinerary.');
+      return;
+    }
+
     if (activeTrip?.id) {
       try {
         await addRecommendationToItinerary(rec, activeTrip.id);
@@ -219,8 +235,7 @@ const ConversationalDiscovery = ({
         showToast('Unable to add activity right now.');
       }
     } else {
-      setAddedRecIds(prev => [...prev, rec.placeId || rec.id]);
-      showToast(`Added "${rec.name}" to itinerary.`);
+      showToast('Select an active trip in My Trips to add places to your itinerary.');
     }
   };
 
@@ -250,6 +265,50 @@ const ConversationalDiscovery = ({
     conversationState.availableMinutes ||
     conversationState.budget !== null
   );
+
+  if (!user) {
+    return (
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '56px 24px',
+        textAlign: 'center',
+        backgroundColor: 'var(--bg-surface)',
+        borderRadius: '16px',
+        border: '1px solid var(--border-subtle)',
+        minHeight: '380px'
+      }}>
+        <div style={{
+          width: '56px',
+          height: '56px',
+          borderRadius: '50%',
+          backgroundColor: 'rgba(56, 189, 248, 0.1)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginBottom: '16px',
+          border: '1px solid rgba(56, 189, 248, 0.25)'
+        }}>
+          <Lock size={26} style={{ color: '#38bdf8' }} />
+        </div>
+        <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 8px 0' }}>
+          Sign in to use Locora Assistant
+        </h3>
+        <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', margin: '0 0 24px 0', maxWidth: '340px', lineHeight: 1.5 }}>
+          Locora Assistant connects with your active journey, preferences, and schedule to recommend authentic places.
+        </p>
+        <button
+          onClick={() => navigate('/login', { state: { from: location.pathname } })}
+          className="btn btn-primary"
+          style={{ padding: '10px 24px', fontSize: '0.875rem', fontWeight: 600, borderRadius: '8px' }}
+        >
+          Sign In to Continue
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -323,11 +382,8 @@ const ConversationalDiscovery = ({
 
           <div>
             <h3 style={{ fontSize: '1.05rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
-              Conversational Discovery
+              Locora Assistant  
             </h3>
-            <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-              Find places that fit your time and budget.
-            </p>
           </div>
         </div>
 
@@ -389,7 +445,7 @@ const ConversationalDiscovery = ({
           <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>
             Active context:
           </span>
-          {conversationState.destination && (
+          {conversationState.destination && !['hi', 'hello', 'hey', 'thanks', 'ok', 'okay', 'good'].includes(conversationState.destination.toLowerCase()) && (
             <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '4px', backgroundColor: 'rgba(59, 130, 246, 0.15)', color: '#93c5fd', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
               <MapPin size={11} /> {conversationState.destination}
             </span>

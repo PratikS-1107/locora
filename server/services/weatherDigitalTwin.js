@@ -90,8 +90,8 @@ export const getLiveDestinationWeather = async ({ latitude, longitude, destinati
     if (hasCoords) {
       const latDiff = Math.abs(owReturnedLat - lat);
       const lonDiff = Math.abs(owReturnedLon - lng);
-      // Allow modest nearest-station resolution while rejecting a different area.
-      if (latDiff > 0.1 || lonDiff > 0.1) {
+      // Allow regional nearest-station resolution (~80 km) while rejecting a completely different country or continent.
+      if (latDiff > 0.75 || lonDiff > 0.75) {
         console.error(`[WEATHER] COORDINATE MISMATCH: Requested lat=${lat},lon=${lng} but got lat=${owReturnedLat},lon=${owReturnedLon} (name="${owReturnedName}"). Rejecting response.`);
         return {
           success: false,

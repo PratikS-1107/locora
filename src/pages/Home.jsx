@@ -614,16 +614,14 @@ const Home = () => {
               {/* Start Your Adventure Button */}
               <button
                 type="button"
-                onClick={handleStartPlanning}
+                onClick={() => handleCreateTripFromModal(currentItem)}
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '10px',
                   padding: '13px 26px',
-                  backgroundColor: 'rgba(22, 27, 34, 0.88)',
-                  border: '1px solid rgba(255, 255, 255, 0.16)',
-                  backdropFilter: 'blur(16px)',
-                  WebkitBackdropFilter: 'blur(16px)',
+                  backgroundColor: '#0ea5e9',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
                   borderRadius: '9999px',
                   color: '#ffffff',
                   fontSize: '0.8rem',
@@ -631,22 +629,53 @@ const Home = () => {
                   letterSpacing: '0.08em',
                   textTransform: 'uppercase',
                   cursor: 'pointer',
-                  boxShadow: '0 6px 24px rgba(0, 0, 0, 0.4)',
-                  transition: 'background 0.2s ease, border-color 0.2s ease, transform 0.2s ease'
+                  boxShadow: '0 6px 24px rgba(14, 165, 233, 0.45)',
+                  transition: 'background 0.2s ease, transform 0.2s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#0284c7';
+                  e.currentTarget.style.transform = 'translateY(-1px)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = '#0ea5e9';
+                  e.currentTarget.style.transform = 'translateY(0)';
+                }}
+              >
+                <span>Start Your Adventure</span>
+                <ArrowRight size={14} style={{ color: '#ffffff' }} />
+              </button>
+
+              {/* View Itinerary Button */}
+              <button
+                type="button"
+                onClick={() => setSelectedItineraryTrip(currentItem)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '12px 22px',
+                  backgroundColor: 'rgba(22, 27, 34, 0.88)',
+                  border: '1px solid rgba(255, 255, 255, 0.18)',
+                  backdropFilter: 'blur(16px)',
+                  WebkitBackdropFilter: 'blur(16px)',
+                  borderRadius: '9999px',
+                  color: '#ffffff',
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  letterSpacing: '0.06em',
+                  cursor: 'pointer',
+                  transition: 'background 0.2s ease, border-color 0.2s ease'
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.backgroundColor = 'rgba(34, 42, 54, 0.95)';
                   e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.35)';
-                  e.currentTarget.style.transform = 'translateX(2px)';
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.backgroundColor = 'rgba(22, 27, 34, 0.88)';
-                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.16)';
-                  e.currentTarget.style.transform = 'translateX(0)';
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.18)';
                 }}
               >
-                <span>Start Your Adventure</span>
-                <ArrowRight size={14} style={{ color: '#38bdf8' }} />
+                <span>View Itinerary</span>
               </button>
             </div>
           </div>

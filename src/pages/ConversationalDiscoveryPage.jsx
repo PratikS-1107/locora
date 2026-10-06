@@ -119,7 +119,7 @@ const ConversationalDiscoveryPage = () => {
               lineHeight: 1.15
             }}
           >
-            Conversational Discovery
+            Locora Assistant
           </h1>
 
           <p

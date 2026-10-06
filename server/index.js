@@ -1374,6 +1374,18 @@ const handleConversationalDiscoveryRequest = async (req, res) => {
 
     const updatedState = intentResult.updatedState || {};
 
+    // If user message is conversational (greeting, gratitude, capabilities, context sharing):
+    if (intentResult.action === 'conversational_reply' && intentResult.reply) {
+      return res.json({
+        success: true,
+        isRefusal: false,
+        reply: intentResult.reply,
+        recommendations: [],
+        extractedIntent: intentResult,
+        conversationState: updatedState
+      });
+    }
+
     // If essential information is missing and assistant asked a concise travel question:
     if (intentResult.action === 'ask_clarification' && intentResult.followUpQuestion) {
       return res.json({
@@ -1576,7 +1588,7 @@ const VERIFIED_BASE_EXPERIENCES = [
     reviewCount: 29800,
     priceLevel: 0,
     priceDisplay: 'Free',
-    image: null,
+    image: 'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=800&q=80',
     googleMapsUrl: 'https://www.google.com/maps/search/?api=1&query=Arashiyama+Bamboo+Grove+Kyoto&query_place_id=ChIJz2rYjF4MAWARyT9QdJ86aVo',
     tags: ['kyoto', 'japan', 'nature', 'bamboo', 'scenic', 'forest', 'walk'],
     verified: true
@@ -1594,7 +1606,7 @@ const VERIFIED_BASE_EXPERIENCES = [
     reviewCount: 31500,
     priceLevel: 0,
     priceDisplay: 'Free',
-    image: null,
+    image: 'https://images.unsplash.com/photo-1590050752117-238cb0fb12b1?auto=format&fit=crop&w=800&q=80',
     googleMapsUrl: 'https://www.google.com/maps/search/?api=1&query=Basilica+of+Bom+Jesus+Goa&query_place_id=ChIJbU5qgZ_cvzsRLG9t6qMvjVE',
     tags: ['goa', 'india', 'unesco', 'heritage', 'church', 'culture', 'history'],
     verified: true
@@ -1612,7 +1624,7 @@ const VERIFIED_BASE_EXPERIENCES = [
     reviewCount: 14200,
     priceLevel: 0,
     priceDisplay: 'Free',
-    image: null,
+    image: 'https://images.unsplash.com/photo-1614082242765-7c98ca0f3df3?auto=format&fit=crop&w=800&q=80',
     googleMapsUrl: 'https://www.google.com/maps/search/?api=1&query=Fontainhas+Panaji+Goa&query_place_id=ChIJn3uP8bravzsRM3r6XbW2D3E',
     tags: ['goa', 'india', 'culture', 'architecture', 'portuguese', 'heritage', 'walk'],
     verified: true
@@ -1630,7 +1642,7 @@ const VERIFIED_BASE_EXPERIENCES = [
     reviewCount: 22400,
     priceLevel: 1,
     priceDisplay: 'Price varies',
-    image: null,
+    image: 'https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&w=800&q=80',
     googleMapsUrl: 'https://www.google.com/maps/search/?api=1&query=Dudhsagar+Waterfalls+Goa&query_place_id=ChIJ42wKq8P9vzsRhF0e7t3_a8E',
     tags: ['goa', 'india', 'nature', 'waterfall', 'trekking', 'scenic', 'jungle'],
     verified: true
@@ -1666,7 +1678,7 @@ const VERIFIED_BASE_EXPERIENCES = [
     reviewCount: 68400,
     priceLevel: 1,
     priceDisplay: 'Price varies',
-    image: null,
+    image: 'https://images.unsplash.com/photo-1599661046289-e31897846e41?auto=format&fit=crop&w=800&q=80',
     googleMapsUrl: 'https://www.google.com/maps/search/?api=1&query=City+Palace+Jaipur&query_place_id=ChIJ7Yv1Z3LcbTkR0N4B8aM3i1s',
     tags: ['jaipur', 'india', 'rajasthan', 'palace', 'museum', 'culture', 'royal'],
     verified: true
@@ -1684,7 +1696,7 @@ const VERIFIED_BASE_EXPERIENCES = [
     reviewCount: 18200,
     priceLevel: 0,
     priceDisplay: 'Free',
-    image: null,
+    image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=800&q=80',
     googleMapsUrl: 'https://www.google.com/maps/search/?api=1&query=Talao+Pali+Thane&query_place_id=ChIJk7Qv9xK_5zsR7Y1m9tF2aVw',
     tags: ['thane', 'mumbai', 'india', 'lake', 'nature', 'promenade', 'local'],
     verified: true
@@ -1702,7 +1714,7 @@ const VERIFIED_BASE_EXPERIENCES = [
     reviewCount: 6500,
     priceLevel: 0,
     priceDisplay: 'Free',
-    image: null,
+    image: 'https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&w=800&q=80',
     googleMapsUrl: 'https://www.google.com/maps/search/?api=1&query=Kopineshwar+Mandir+Thane&query_place_id=ChIJb6e9_xK_5zsRsN9m9tF2bCw',
     tags: ['thane', 'mumbai', 'india', 'temple', 'heritage', 'culture', 'ancient'],
     verified: true

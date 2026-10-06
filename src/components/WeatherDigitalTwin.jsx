@@ -298,8 +298,8 @@ function WeatherDigitalTwinInner({
         const weatherLat = Number(res.location?.latitude ?? res.coordinates?.latitude);
         const weatherLng = Number(res.location?.longitude ?? res.coordinates?.longitude);
         const coordinatesMatch = Number.isFinite(weatherLat) && Number.isFinite(weatherLng)
-          && Math.abs(weatherLat - Number(destLat)) <= 0.1
-          && Math.abs(weatherLng - Number(destLng)) <= 0.1;
+          && Math.abs(weatherLat - Number(destLat)) <= 0.5
+          && Math.abs(weatherLng - Number(destLng)) <= 0.5;
 
         if (!coordinatesMatch) {
           setWeatherData(null);

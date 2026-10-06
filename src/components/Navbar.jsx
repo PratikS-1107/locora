@@ -191,7 +191,7 @@ const Navbar = () => {
           </button>
 
           <button
-            onClick={() => handleNavWithAuth('/explore')}
+            onClick={() => navigate('/explore')}
             style={{
               fontSize: '0.8rem',
               fontWeight: 600,
@@ -224,7 +224,7 @@ const Navbar = () => {
           </button>
 
           <button
-            onClick={() => handleNavWithAuth('/community')}
+            onClick={() => navigate('/community')}
             style={{
               fontSize: '0.8rem',
               fontWeight: 600,

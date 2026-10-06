@@ -61,6 +61,7 @@ const Discover = () => {
   const locationModeRef = useRef('gps');
   const selectedDestinationRef = useRef(null);
   const isManualOverrideRef = useRef(false);
+  const contextRef = useRef(null);
 
   useEffect(() => {
     locationModeRef.current = locationMode;
@@ -71,6 +72,9 @@ const Discover = () => {
   useEffect(() => {
     isManualOverrideRef.current = isManualOverride;
   }, [isManualOverride]);
+  useEffect(() => {
+    contextRef.current = context;
+  }, [context]);
 
   // Browser GPS State
   const [userGpsCoords, setUserGpsCoords] = useState(null);
@@ -202,6 +206,11 @@ const Discover = () => {
     if (locationMode === 'active_trip') {
       return (context?.hasTrip && context?.activeTripLocation) ? context.activeTripLocation : null;
     }
+    // If active trip exists and user has NOT explicitly chosen a manual destination or GPS,
+    // ensure active trip location takes priority
+    if (context?.hasTrip && context?.activeTripLocation && !isManualOverrideRef.current) {
+      return context.activeTripLocation;
+    }
     if (locationMode === 'gps') {
       // Do not expose browser GPS while the active-trip context is still loading.
       // Otherwise the Digital Twin can issue a GPS weather request before the
@@ -247,14 +256,15 @@ const Discover = () => {
       if (user?.id) {
         const ctx = await getDiscoverContext(user.id);
         setContext(ctx);
+        contextRef.current = ctx;
 
         // Priority Rule: If active trip exists and user has NOT manually chosen a destination, set active_trip mode
-        if (ctx.hasTrip && ctx.activeTripLocation && !isManualOverrideRef.current && !selectedDestinationRef.current && locationModeRef.current !== 'destination') {
+        if (ctx.hasTrip && ctx.activeTripLocation && !isManualOverrideRef.current && locationModeRef.current !== 'destination') {
           setLocationMode('active_trip');
           locationModeRef.current = 'active_trip';
         }
       } else {
-        setContext({
+        const emptyCtx = {
           hasTrip: false,
           activeTrip: null,
           activeTripLocation: null,
@@ -264,7 +274,9 @@ const Discover = () => {
           availableTimeFormatted: null,
           remainingBudget: null,
           occupiedItems: []
-        });
+        };
+        setContext(emptyCtx);
+        contextRef.current = emptyCtx;
       }
     } catch (e) {
       console.error('Error fetching discover context from Supabase:', e);
@@ -301,7 +313,8 @@ const Discover = () => {
       setUserGpsSource(resolved.source || 'Browser GPS');
 
       // If no manual destination override and no active trip, stay in GPS mode
-      if (!isManualOverrideRef.current && locationModeRef.current !== 'destination' && !selectedDestinationRef.current && (!context?.hasTrip || !context?.activeTripLocation)) {
+      const hasTripActive = Boolean(contextRef.current?.hasTrip && contextRef.current?.activeTripLocation);
+      if (!isManualOverrideRef.current && locationModeRef.current !== 'destination' && !selectedDestinationRef.current && !hasTripActive) {
         setLocationMode('gps');
         locationModeRef.current = 'gps';
       }
