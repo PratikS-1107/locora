@@ -56,26 +56,6 @@ const Discover = () => {
   // User-Selected Destination State
   const [selectedDestination, setSelectedDestination] = useState(null);
 
-  // Refs to prevent asynchronous stale closures (e.g. from detectLocation or loadDiscoverContext)
-  // from accidentally overwriting a user's manually searched destination
-  const locationModeRef = useRef('gps');
-  const selectedDestinationRef = useRef(null);
-  const isManualOverrideRef = useRef(false);
-  const contextRef = useRef(null);
-
-  useEffect(() => {
-    locationModeRef.current = locationMode;
-  }, [locationMode]);
-  useEffect(() => {
-    selectedDestinationRef.current = selectedDestination;
-  }, [selectedDestination]);
-  useEffect(() => {
-    isManualOverrideRef.current = isManualOverride;
-  }, [isManualOverride]);
-  useEffect(() => {
-    contextRef.current = context;
-  }, [context]);
-
   // Browser GPS State
   const [userGpsCoords, setUserGpsCoords] = useState(null);
   const [userGpsName, setUserGpsName] = useState(null);
@@ -111,6 +91,26 @@ const Discover = () => {
   // Toast & Warning States
   const [toastMsg, setToastMsg] = useState('');
   const [conflictMsg, setConflictMsg] = useState('');
+
+  // Refs to prevent asynchronous stale closures (e.g. from detectLocation or loadDiscoverContext)
+  // from accidentally overwriting a user's manually searched destination
+  const locationModeRef = useRef('gps');
+  const selectedDestinationRef = useRef(null);
+  const isManualOverrideRef = useRef(false);
+  const contextRef = useRef(null);
+
+  useEffect(() => {
+    locationModeRef.current = locationMode;
+  }, [locationMode]);
+  useEffect(() => {
+    selectedDestinationRef.current = selectedDestination;
+  }, [selectedDestination]);
+  useEffect(() => {
+    isManualOverrideRef.current = isManualOverride;
+  }, [isManualOverride]);
+  useEffect(() => {
+    contextRef.current = context;
+  }, [context]);
 
   const hasGoogleKey = Boolean(getGoogleMapsApiKey());
 
