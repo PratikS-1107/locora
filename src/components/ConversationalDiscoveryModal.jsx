@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import {
   sendConversationalDiscoveryMessage,
+  sanitizeDestination,
   getCurrentLocation,
   resolveLocationName,
   toggleSaveWishlistItem,
@@ -494,9 +495,9 @@ const ConversationalDiscoveryModal = () => {
               <span style={{ fontSize: '0.675rem', color: 'var(--text-muted)', fontWeight: 600 }}>
                 Active context:
               </span>
-              {conversationState.destination && !['hi', 'hello', 'hey', 'thanks', 'ok', 'okay', 'good'].includes(conversationState.destination.toLowerCase()) && (
+              {sanitizeDestination(conversationState.destination) && (
                 <span style={{ fontSize: '0.675rem', padding: '2px 7px', borderRadius: '4px', backgroundColor: 'rgba(59, 130, 246, 0.15)', color: '#93c5fd', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                  <MapPin size={10} /> {conversationState.destination}
+                  <MapPin size={10} /> {sanitizeDestination(conversationState.destination)}
                 </span>
               )}
               {conversationState.availableMinutes && (

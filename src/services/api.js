@@ -2690,18 +2690,16 @@ export const addRecommendationToTripDay = async ({
 
 // --- LOCORA ASSISTANT CONVERSATIONAL SERVICE (Powered by NVIDIA & Locora Engine) ---
 
-const CONVERSATIONAL_GREETING_REGEX = /^(hi|hello|hey|hiya|howdy|good\s+(morning|afternoon|evening|day)|greetings|sup|yo)[!.,\s]*$/i;
-const CONVERSATIONAL_ACK_REGEX = /^(thanks|thank\s+you|thx|nice|okay|ok|cool|awesome|great|super|perfect|that's\s+helpful|thats\s+helpful|understood|got\s+it|sounds\s+good|wonderful)[!.,\s]*$/i;
-const CONVERSATIONAL_ABOUT_REGEX = /^(what\s+can\s+you\s+do|tell\s+me\s+about\s+locora|how\s+does\s+this\s+work|who\s+are\s+you|help(\s+me)?|what\s+is\s+locora)[?!.,\s]*$/i;
-const CONVERSATIONAL_CONTEXT_REGEX = /^(?:i\s*am\s*new\s*to|i'm\s*new\s*to|new\s*to|just\s+arrived\s+in|i\s*am\s*in|i'm\s*in|staying\s*in|living\s*in)\s+([a-zA-Z\s]{2,25})[.?!]?$/i;
-const CONVERSATIONAL_EXPLORE_REGEX = /^(?:what\s+should\s+i\s+explore|what\s+should\s+i\s+do|what\s+to\s+do|what\s+to\s+explore|where\s+should\s+i\s+go)[?!.,\s]*$/i;
-
 const NON_DESTINATION_WORDS = new Set([
   'hi', 'hello', 'hey', 'hiya', 'howdy', 'yo', 'sup',
   'ok', 'okay', 'yes', 'no', 'yeah', 'nope', 'sure', 'fine', 'good',
   'thanks', 'thank you', 'thx', 'nice', 'cool', 'super', 'awesome', 'great', 'perfect',
-  'food', 'culture', 'nature', 'gems', 'activities', 'places', 'spots',
-  'help', 'locora', 'assistant'
+  'food', 'culture', 'nature', 'gems', 'activities', 'activity', 'places', 'spots',
+  'experience', 'experiences', 'trip', 'trips', 'tour', 'travel',
+  'here', 'there', 'somewhere', 'anywhere', 'everywhere', 'anything', 'something', 'nothing',
+  'now', 'today', 'tomorrow', 'tonight', 'yesterday',
+  'help', 'locora', 'assistant', 'recommend', 'recommendation', 'recommendations',
+  'explore', 'discover', 'visit'
 ]);
 
 export const sanitizeDestination = (dest) => {
@@ -2724,100 +2722,35 @@ export const sendConversationalDiscoveryMessage = async ({
     return { success: false, reply: 'Please provide a message.', recommendations: [], conversationState };
   }
 
-  // Ensure current state has no polluted destination like "Hi"
+  // 1. Enforce Authentication Boundary via Supabase Session
+  let authSession = null;
+  if (isSupabaseConfigured() && supabase) {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      authSession = session;
+    } catch (_) {}
+  }
+
+  if (!authSession?.user) {
+    return {
+      success: false,
+      error: 'Authentication required',
+      reply: 'Please sign in to chat with Locora Assistant and receive personalized discovery recommendations.',
+      recommendations: [],
+      conversationState: {
+        ...(conversationState || {}),
+        destination: sanitizeDestination(conversationState?.destination)
+      }
+    };
+  }
+
+  // 2. Clean State (Never propagate non-destination words)
   let cleanState = {
     ...(conversationState || {}),
     destination: sanitizeDestination(conversationState?.destination)
   };
 
-  const lower = trimmed.toLowerCase();
-
-  // 1. Pure Greeting: Never recommend, never treat as destination, reply and wait
-  if (CONVERSATIONAL_GREETING_REGEX.test(trimmed)) {
-    return {
-      success: true,
-      reply: "Hi! What would you like to explore today? Tell me a city, or what kind of experiences you're looking for.",
-      recommendations: [],
-      conversationState: cleanState
-    };
-  }
-
-  // 2. Pure Gratitude / Acknowledgment
-  if (CONVERSATIONAL_ACK_REGEX.test(trimmed)) {
-    return {
-      success: true,
-      reply: "You're welcome! Would you like more details on any of these spots, or another category or destination to explore?",
-      recommendations: [],
-      conversationState: cleanState
-    };
-  }
-
-  // 3. About Locora / Capabilities
-  if (CONVERSATIONAL_ABOUT_REGEX.test(trimmed)) {
-    return {
-      success: true,
-      reply: "I can help you discover verified local spots, cultural landmarks, food destinations, and activities tailored to your schedule and budget. Just share a city or what kind of places you'd like to explore!",
-      recommendations: [],
-      conversationState: cleanState
-    };
-  }
-
-  // 4. Context Sharing: "I'm new to Thane", "I just arrived in Goa"
-  const contextMatch = trimmed.match(CONVERSATIONAL_CONTEXT_REGEX);
-  if (contextMatch) {
-    const rawCity = contextMatch[1].trim();
-    const city = sanitizeDestination(rawCity);
-    if (city) {
-      cleanState = { ...cleanState, destination: city };
-      return {
-        success: true,
-        reply: `Nice! What are you interested in — food, culture, nature, hidden gems, or something to do in ${city}?`,
-        recommendations: [],
-        conversationState: cleanState
-      };
-    }
-  }
-
-  // 5. Conversational follow-up: "What should I explore?"
-  if (CONVERSATIONAL_EXPLORE_REGEX.test(trimmed)) {
-    const dest = cleanState.destination || activeTrip?.destination || location?.city;
-    const destStr = dest ? ` in ${dest}` : '';
-    return {
-      success: true,
-      reply: `You could explore authentic local food, cultural heritage spots, scenic nature, or hidden gems${destStr}. Which of these sounds most interesting to you?`,
-      recommendations: [],
-      conversationState: cleanState
-    };
-  }
-
-  // 6. Check if this is a recommendation intent or conversational follow-up
-  const isDirectRecIntent = /(?:recommend|suggestions?|where\s+should\s+i\s+go|what\s+(?:can|should)\s+i\s+(?:do|see|visit)|places\s+to\s+(?:visit|see|eat|go)|show\s+me\s+places|find\s+(?:places|spots|food|cafes|temples|restaurants)|things\s+to\s+do|must\s+visit|spots\s+(?:in|around|near)|places\s+(?:in|around|near))/i.test(lower);
-  const hasConstraints = /(?:\d+\s*(?:hour|hr|hrs|minute|min|mins)|₹|\$|rs\.?|inr|budget)/i.test(lower);
-  const isCategoryChoice = /^(food|culture|cultural|nature|hidden\s*gems?|workshops?|activities|adventure)[!.,\s]*$/i.test(trimmed);
-
-  // If user has NOT expressed recommendation intent, and just typed a standalone city name
-  if (!isDirectRecIntent && !hasConstraints && !isCategoryChoice && !cleanState.destination && !activeTrip?.destination) {
-    const words = trimmed.split(/\s+/);
-    if (words.length <= 3 && /^[a-zA-Z\s,.'-]+$/.test(trimmed)) {
-      const cityCand = sanitizeDestination(trimmed);
-      if (cityCand) {
-        cleanState = { ...cleanState, destination: cityCand };
-        return {
-          success: true,
-          reply: `Got it, ${cityCand}! What kind of experiences are you in the mood for — authentic local food, cultural heritage, nature, or hidden gems?`,
-          recommendations: [],
-          conversationState: cleanState
-        };
-      }
-    }
-  }
-
-  // If category choice is provided (e.g. "food")
-  if (isCategoryChoice) {
-    cleanState.category = lower.includes('food') ? 'food' : lower.includes('cultur') ? 'cultural' : lower.includes('nature') ? 'nature' : lower.includes('gem') ? 'hidden gems' : 'local';
-  }
-
-  // 7. Proceed to recommendation request
+  // 3. Dispatch to the verified Conversational Discovery Engine
   const payload = {
     message: trimmed,
     history,
@@ -2827,9 +2760,14 @@ export const sendConversationalDiscoveryMessage = async ({
   };
 
   try {
+    const headers = { 'Content-Type': 'application/json' };
+    if (authSession?.access_token) {
+      headers['Authorization'] = `Bearer ${authSession.access_token}`;
+    }
+
     const res = await fetch('/api/chat/discovery', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(payload)
     });
 
@@ -2843,16 +2781,18 @@ export const sendConversationalDiscoveryMessage = async ({
       const errData = await res.json().catch(() => null);
       return {
         success: false,
-        reply: errData?.reply || 'Unable to connect to Locora Assistant.',
+        error: errData?.error || 'Server error',
+        reply: errData?.reply || 'Sorry, I encountered an issue checking places right now. Please try asking again.',
         recommendations: [],
         conversationState: cleanState
       };
     }
   } catch (err) {
-    console.warn('Conversational discovery fetch error:', err);
+    console.warn('[API] Conversational discovery fetch error:', err);
     return {
       success: false,
-      reply: 'Network connection issue. Please check your connection and try again.',
+      error: err.message,
+      reply: "I'm having trouble connecting to discovery services right now. Please try again in a moment.",
       recommendations: [],
       conversationState: cleanState
     };

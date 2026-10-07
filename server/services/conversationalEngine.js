@@ -36,14 +36,18 @@ const NON_DESTINATION_WORDS = new Set([
   'hi', 'hello', 'hey', 'hiya', 'howdy', 'yo', 'sup',
   'ok', 'okay', 'yes', 'no', 'yeah', 'nope', 'sure', 'fine', 'good',
   'thanks', 'thank you', 'thx', 'nice', 'cool', 'super', 'awesome', 'great', 'perfect',
-  'food', 'culture', 'nature', 'gems', 'activities', 'places', 'spots',
-  'help', 'locora', 'assistant'
+  'food', 'culture', 'nature', 'gems', 'activities', 'activity', 'places', 'spots',
+  'experience', 'experiences', 'trip', 'trips', 'tour', 'travel',
+  'here', 'there', 'somewhere', 'anywhere', 'everywhere', 'anything', 'something', 'nothing',
+  'now', 'today', 'tomorrow', 'tonight', 'yesterday',
+  'help', 'locora', 'assistant', 'recommend', 'recommendation', 'recommendations',
+  'explore', 'discover', 'visit'
 ]);
 
 export const sanitizeAndMergeState = (prevState = {}, updates = {}) => {
   const sanitizeDest = (dest) => {
     if (!dest || typeof dest !== 'string') return null;
-    const clean = dest.trim().replace(/[,\.\?!]+$/g, '').trim();
+    const clean = dest.trim().replace(/[,.?!]+$/g, '').trim();
     if (clean.length <= 2 && clean.toLowerCase() !== 'ur') return null;
     if (NON_DESTINATION_WORDS.has(clean.toLowerCase())) return null;
     return clean;
@@ -79,7 +83,7 @@ export const sanitizeAndMergeState = (prevState = {}, updates = {}) => {
 const cleanCityCandidate = (str) => {
   if (!str || typeof str !== 'string') return null;
   let s = str.trim()
-    .replace(/^[\s,.\-–—]+|[\s,.\-–—?!]+$/g, '')
+    .replace(/^[\s,.\–—\-]+|[\s,.\–—\-?!]+$/g, '')
     .replace(/^(?:the\s+city\s+of|the\s+area\s+of|the\s+town\s+of|the|city\s+of|area\s+of)\s+/i, '')
     .replace(/\s+(?:city|area|district|region)$/i, '')
     .replace(/^(?:visit|see|explore|places\s+in|places\s+near|spots\s+in|around|near|in|to|at|destination)\s+/i, '')
@@ -91,16 +95,16 @@ const cleanCityCandidate = (str) => {
   if (NON_DESTINATION_WORDS.has(s.toLowerCase())) return null;
 
   // Filter out question words, suggestions, conversational phrases from candidate cities
-  if (/^(?:what|where|which|how|who|why|when|can|could|should|would|will|is|are|tell|show|recommend|suggest|i\s*want|i\s*need|help)\b/i.test(str.trim())) {
+  if (/^(?:what|where|which|how|who|why|when|can|could|should|would|will|is|are|tell|show|recommend|suggest|i\s*want|i\s*need|help|i'm|i\s*am)\b/i.test(str.trim())) {
     return null;
   }
 
   const genericPhrases = [
-    'my area', 'here', 'me', 'the city', 'the area', 'town', 'places',
-    'spots', 'somewhere', 'anywhere', 'anything', 'something',
+    'my area', 'here', 'there', 'me', 'the city', 'the area', 'town', 'places',
+    'spots', 'somewhere', 'anywhere', 'anything', 'something', 'nothing',
     'recommend', 'recommend me', 'explore', 'discover', 'visit', 'activities',
     'can you do', 'what can you do', 'tell me about locora', 'who are you', 'how does this work',
-    'thank you', 'thanks', 'hello', 'help', 'nice', 'cool', 'super', 'awesome'
+    'thank you', 'thanks', 'hello', 'help', 'nice', 'cool', 'super', 'awesome', 'experience', 'experiences'
   ];
   if (genericPhrases.includes(s.toLowerCase())) return null;
 
@@ -109,8 +113,151 @@ const cleanCityCandidate = (str) => {
 };
 
 /**
- * Deterministic travel parser & state merger.
- * NVIDIA is NOT used here so that valid travel requests are never blocked or refused.
+ * Deterministic Semantic Fallback Classifier (used when AI is unavailable or fails).
+ * Adheres strictly to the four distinct user intent classes:
+ * 1. "conversation"
+ * 2. "context"
+ * 3. "clarification"
+ * 4. "recommendation"
+ */
+const fallbackDeterministicClassifier = ({ trimmed, lower, history, currentState, clientContext }) => {
+  // 1. Casual Greetings
+  const isGreeting = /^(?:hi|hello|hey|hiya|howdy|good\s+(?:morning|afternoon|evening|day)|greetings|sup|yo)[!.,\s]*$/i.test(trimmed);
+  if (isGreeting) {
+    return {
+      intent: 'conversation',
+      destination: null,
+      category: null,
+      availableMinutes: null,
+      budget: null,
+      reply: "Hi! What would you like to explore today? Tell me a city, or what kind of experiences you're looking for."
+    };
+  }
+
+  // 2. Gratitude / Acknowledgment
+  const isAck = /^(?:thanks|thank\s+you|thx|nice|okay|ok|cool|awesome|great|super|perfect|that's\s+helpful|thats\s+helpful|understood|got\s+it|sounds\s+good|wonderful)[!.,\s]*$/i.test(trimmed);
+  if (isAck) {
+    return {
+      intent: 'conversation',
+      destination: null,
+      category: null,
+      availableMinutes: null,
+      budget: null,
+      reply: "You're welcome! Would you like more details on any of these spots, or another category or destination to explore?"
+    };
+  }
+
+  // 3. Capabilities / About Locora
+  const isAbout = /^(?:what\s+can\s+you\s+do|tell\s+me\s+about\s+locora|how\s+does\s+this\s+work|who\s+are\s+you|help(?:\s+me)?|what\s+is\s+locora)[?!.,\s]*$/i.test(trimmed);
+  if (isAbout) {
+    return {
+      intent: 'conversation',
+      destination: null,
+      category: null,
+      availableMinutes: null,
+      budget: null,
+      reply: "I help you discover verified local, cultural, food, and nature experiences tailored to your available time and budget. Tell me where you are or what destination you'd like to explore!"
+    };
+  }
+
+  // 4. Context: "I'm new here"
+  if (/^(?:i\s*am\s*new\s*here|i'm\s*new\s*here|new\s*here)[.?!]?$/i.test(trimmed)) {
+    return {
+      intent: 'context',
+      destination: null,
+      category: null,
+      availableMinutes: null,
+      budget: null,
+      reply: "Welcome! Which city or area are you currently in or looking to explore?"
+    };
+  }
+
+  // 5. Context: "I'm new to <City>"
+  const newToCityMatch = trimmed.match(/^(?:i\s*am\s*new\s*to|i'm\s*new\s*to|new\s*to|just\s+arrived\s+in)\s+([a-zA-Z\s]{2,25})[.?!]?$/i);
+  if (newToCityMatch) {
+    const city = cleanCityCandidate(newToCityMatch[1]);
+    return {
+      intent: 'context',
+      destination: city,
+      category: null,
+      availableMinutes: null,
+      budget: null,
+      reply: `Welcome to ${city || 'the area'}! Are you looking for authentic local food, cultural heritage, nature spots, or something else to explore?`
+    };
+  }
+
+  // 6. Context: "I want something to eat" / food preference
+  if (/^(?:i\s*want\s*(?:something\s+to\s+eat|food)|looking\s+for\s+food|hungry)[.?!]?$/i.test(trimmed)) {
+    return {
+      intent: 'context',
+      destination: null,
+      category: 'food',
+      availableMinutes: null,
+      budget: null,
+      reply: "What kind of food or cuisine are you in the mood for, and in which area?"
+    };
+  }
+
+  // 7. Clarification / Vague Topic: "experience" / "experiences"
+  if (/^experiences?[.?!]?$/i.test(trimmed)) {
+    return {
+      intent: 'clarification',
+      destination: null,
+      category: null,
+      availableMinutes: null,
+      budget: null,
+      reply: "Sure! What kind of experience are you looking for — authentic local food, cultural heritage, nature, or hidden gems?"
+    };
+  }
+
+  // 8. Recommendation Intent Detection
+  const isDirectRec = /(?:recommend|suggestions?|where\s+should\s+i\s+(?:go|eat|visit)|what\s+(?:can|should)\s+i\s+(?:do|see|visit)|places\s+to\s+(?:visit|see|eat|go)|show\s+me\s+places|find\s+(?:me\s+)?(?:places|spots|food|cafes|temples|restaurants)|things\s+to\s+do|must\s+visit)/i.test(lower);
+
+  // Extract destination from explicit prepositional phrase (e.g. "in Thane", "near Bandra")
+  let dest = null;
+  const inCityMatch = lower.match(/\b(?:in|at|around|near|to)\s+([a-zA-Z\s]{2,20}?)(?:[,\.\?!]|\s+(?:for|with|under|having)|$)/i);
+  if (inCityMatch) {
+    dest = cleanCityCandidate(inCityMatch[1]);
+  }
+
+  let cat = null;
+  if (/food|eat|restaurant|cafe|dining/i.test(lower)) cat = 'food';
+  else if (/cultur|temple|museum|heritage|history|monument/i.test(lower)) cat = 'cultural';
+  else if (/nature|park|lake|beach|waterfall|garden/i.test(lower)) cat = 'nature';
+  else if (/gem|hidden/i.test(lower)) cat = 'hidden gems';
+
+  let mins = null;
+  const hrMatch = lower.match(/(\d+(?:\.\d+)?)\s*(?:hour|hr|hrs|hours)/i);
+  if (hrMatch) mins = Math.round(parseFloat(hrMatch[1]) * 60);
+
+  if (isDirectRec) {
+    return {
+      intent: 'recommendation',
+      destination: dest,
+      category: cat,
+      availableMinutes: mins,
+      budget: null,
+      reply: null
+    };
+  }
+
+  return {
+    intent: 'conversation',
+    destination: dest,
+    category: cat,
+    availableMinutes: mins,
+    budget: null,
+    reply: "I'm here to help you discover great local spots! Tell me where you are and what you'd like to experience."
+  };
+};
+
+/**
+ * Natural Language Travel Intent & State Analyzer.
+ * Accurately determines whether the user is:
+ * 1. having a normal conversation
+ * 2. providing context (CONTEXT != DESTINATION)
+ * 3. asking a question / clarifying (KEYWORD != DESTINATION)
+ * 4. asking for recommendations (CONVERSATION != RECOMMENDATION REQUEST)
  */
 export const extractTravelIntentWithNvidia = async ({
   message,
@@ -129,7 +276,7 @@ export const extractTravelIntentWithNvidia = async ({
 
   const lower = trimmed.toLowerCase();
 
-  // Strict check ONLY for blatant non-travel queries (math, code, programming, politics, recipes)
+  // Strict check ONLY for blatant non-travel queries (math, code, programming, politics, crypto)
   const nonTravelKeywords = [
     /^what is python/i,
     /^who is the president/i,
@@ -157,133 +304,96 @@ export const extractTravelIntentWithNvidia = async ({
     }
   }
 
-  // Inspect previous assistant message in history to understand question-answer context
-  const lastAssistantMsg = [...(history || [])].reverse().find(h => h.sender === 'assistant')?.text || '';
-  const isAskingLocation = /(?:which\s+city|what\s+city|which\s+area|what\s+destination|which\s+destination|where\s+are\s+you|tell\s+me\s+a\s+city)/i.test(lastAssistantMsg);
-  const isAskingBudget = /(?:budget|cost|price|how much|money|spend)/i.test(lastAssistantMsg);
-  const isAskingTime = /(?:time|hours?|mins?|minutes?|duration|how long|window|schedule)/i.test(lastAssistantMsg);
+  // Multi-Turn AI Intent Analysis via NVIDIA LLaMA 3.2
+  let aiResult = null;
+  try {
+    const systemPrompt = `You are the Natural Language Intent Analyzer for Locora, a hyper-local travel & discovery assistant.
+Analyze the user's latest message and conversation history.
 
-  // 1. Extract available time
-  let extractedMinutes = null;
-  const hourMatch = lower.match(/(\d+(?:\.\d+)?)\s*(?:hour|hr|hrs|hours)/i);
-  if (hourMatch) {
-    extractedMinutes = Math.round(parseFloat(hourMatch[1]) * 60);
-  } else {
-    const minMatch = lower.match(/(\d+)\s*(?:minute|min|mins|minutes)/i);
-    if (minMatch) {
-      extractedMinutes = parseInt(minMatch[1], 10);
-    } else if (isAskingTime) {
-      const numMatch = lower.match(/^(\d+(?:\.\d+)?)$/);
-      if (numMatch) {
-        const val = parseFloat(numMatch[1]);
-        extractedMinutes = val <= 12 ? Math.round(val * 60) : Math.round(val);
+Classify the user intent into exactly ONE of 4 categories:
+1. "conversation" - Casual greetings (hi, hello), capability questions (what can you do), politeness, gratitude (thanks), chit-chat, or general remarks.
+2. "context" - Sharing personal context or preferences without an explicit request for immediate place recommendations (e.g. "I'm new here", "I'm new to Thane", "I want something to eat", "I have 2 hours", "my budget is 500").
+3. "clarification" - Vague topic mentions or asking clarifying questions (e.g. "experience", "food", "what do you mean").
+4. "recommendation" - Clear, explicit request for place recommendations, spots, activities, or things to visit (e.g. "Find me local food in Thane", "Recommend cultural places in Thane for 3 hours", "Where should I go in Mumbai?").
+
+CRITICAL RULES:
+- CONTEXT != DESTINATION: Only extract "destination" if the user explicitly specifies a real city/town/geographic location (e.g. "Thane", "Mumbai", "Kyoto"). Words like "experience", "here", "food", "nature", "places", "activity", "tomorrow" are NEVER destinations.
+- KEYWORD != DESTINATION: Never treat arbitrary nouns as destinations.
+- CONVERSATION != RECOMMENDATION: Do NOT classify as "recommendation" unless the user clearly asks to find, recommend, suggest, or show places.
+- When intent is "conversation", "context", or "clarification", generate a natural, helpful 1-2 sentence assistant reply or follow-up question.
+
+Output ONLY valid JSON with this exact structure:
+{
+  "intent": "conversation" | "context" | "clarification" | "recommendation",
+  "destination": string | null,
+  "category": "food" | "cultural" | "nature" | "hidden gems" | "workshops" | "activities" | null,
+  "availableMinutes": number | null,
+  "budget": number | null,
+  "reply": string | null
+}`;
+
+    const promptMessages = [
+      { role: 'system', content: systemPrompt },
+      {
+        role: 'user',
+        content: `Existing State: ${JSON.stringify(currentState)}\nHistory: ${JSON.stringify((history || []).slice(-4))}\nLatest Message: "${trimmed}"`
+      }
+    ];
+
+    const aiText = await generateNvidiaResponse(promptMessages, {
+      temperature: 0.1,
+      maxTokens: 250
+    });
+
+    if (aiText) {
+      const jsonMatch = aiText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (parsed.destination) {
+          parsed.destination = cleanCityCandidate(parsed.destination);
+        }
+        aiResult = parsed;
       }
     }
+  } catch (aiErr) {
+    // Graceful fallback to deterministic classifier
   }
 
-  // 2. Extract budget (handles "₹1000", "₹800", "800 rs", "budget 500", "under 500", "spend 500")
-  let extractedBudget = null;
+  // Deterministic Fallback if AI was unavailable
+  if (!aiResult) {
+    aiResult = fallbackDeterministicClassifier({
+      trimmed,
+      lower,
+      history,
+      currentState,
+      clientContext
+    });
+  }
+
+  // Extract explicit constraints if user directly typed numbers/currency
+  const hourMatch = lower.match(/(\d+(?:\.\d+)?)\s*(?:hour|hr|hrs|hours)/i);
+  let explicitMinutes = hourMatch ? Math.round(parseFloat(hourMatch[1]) * 60) : null;
+  if (!explicitMinutes) {
+    const minMatch = lower.match(/(\d+)\s*(?:minute|min|mins|minutes)/i);
+    if (minMatch) explicitMinutes = parseInt(minMatch[1], 10);
+  }
+
+  let explicitBudget = null;
   const budgetMatch = lower.match(/(?:₹|rs\.?|inr|\$|usd|€|eur)\s*(\d+(?:,\d+)?)/i) ||
                       lower.match(/(\d+(?:,\d+)?)\s*(?:₹|rs\.?|inr|rupees|bucks|dollars)/i) ||
                       lower.match(/(?:under|within|max|budget\s*(?:is|of)?|below|spend|spending)\s*(?:₹|rs\.?|inr|\$)?\s*(\d+(?:,\d+)?)(?!\s*(?:hour|hr|minute|min))/i);
-  if (budgetMatch) {
-    extractedBudget = Number(budgetMatch[1].replace(/,/g, ''));
-  } else if (isAskingBudget) {
-    const numMatch = lower.match(/^(\d+(?:,\d+)?)$/);
-    if (numMatch) {
-      extractedBudget = Number(numMatch[1].replace(/,/g, ''));
-    }
-  }
+  if (budgetMatch) explicitBudget = Number(budgetMatch[1].replace(/,/g, ''));
 
-  // 3. Extract category
-  let extractedCategory = null;
-  if (lower.includes('food') || lower.includes('eat') || lower.includes('eating') || lower.includes('restaurant') || lower.includes('cafe') || lower.includes('dinner') || lower.includes('lunch') || lower.includes('breakfast') || lower.includes('bakery') || lower.includes('dining')) {
-    extractedCategory = 'food';
-  } else if (lower.includes('culture') || lower.includes('cultural') || lower.includes('temple') || lower.includes('museum') || lower.includes('heritage') || lower.includes('monument') || lower.includes('fort') || lower.includes('history') || lower.includes('historic') || lower.includes('art')) {
-    extractedCategory = 'cultural';
-  } else if (lower.includes('nature') || lower.includes('park') || lower.includes('lake') || lower.includes('beach') || lower.includes('waterfall') || lower.includes('garden') || lower.includes('viewpoint') || lower.includes('scenic') || lower.includes('outdoor')) {
-    extractedCategory = 'nature';
-  } else if (lower.includes('hidden') || lower.includes('secret') || lower.includes('offbeat') || lower.includes('gem') || lower.includes('gems')) {
-    extractedCategory = 'hidden gems';
-  } else if (lower.includes('workshop') || lower.includes('workshops') || lower.includes('pottery') || lower.includes('class') || lower.includes('craft') || lower.includes('learn')) {
-    extractedCategory = 'workshops';
-  } else if (lower.includes('activity') || lower.includes('activities') || lower.includes('adventure') || lower.includes('sport') || lower.includes('trek') || lower.includes('fun')) {
-    extractedCategory = 'activities';
-  }
-
-  // Check for budget/cheap preferences
-  const preferences = [];
-  if (lower.includes('cheap') || lower.includes('budget') || lower.includes('affordable') || lower.includes('free') || lower.includes('low cost')) {
-    preferences.push('budget-friendly');
-    if (extractedBudget === null && currentState.budget === null) {
-      extractedBudget = 500;
-    }
-  }
-
-  const isGreeting = /^(hi|hello|hey|hiya|howdy|good\s+(morning|afternoon|evening|day)|greetings|sup|yo)[!.,\s]*$/i.test(trimmed);
-  const isAck = /^(thanks|thank\s+you|thx|nice|okay|ok|cool|awesome|great|super|perfect|that's\s+helpful|thats\s+helpful|understood|got\s+it|sounds\s+good|wonderful)[!.,\s]*$/i.test(trimmed);
-  const isAbout = /^(what\s+can\s+you\s+do|tell\s+me\s+about\s+locora|how\s+does\s+this\s+work|who\s+are\s+you|help(\s+me)?|what\s+is\s+locora)[?!.,\s]*$/i.test(trimmed);
-  const isExploreQuestion = /^(?:what\s+should\s+i\s+(?:explore|do|see|visit)|what\s+to\s+(?:explore|do|see|visit)|where\s+should\s+i\s+go)[?!.,\s]*$/i.test(trimmed);
-
-  // 4. Extract destination from natural phrasing (skip for pure greetings/about/ack/explore questions)
-  let extractedDest = null;
-  if (!isGreeting && !isAck && !isAbout && !isExploreQuestion) {
-    const destPatterns = [
-      /\b(?:i\s*am\s*new\s*to|new\s*to)\b\s+([a-zA-Z\s]{2,25}?)(?:[,\.\?!]|\s+(?:what|where|which|how|recommend|and|with|for|having|under)|$)/i,
-      /\b(?:i\s*am\s*in|i'm\s*in|currently\s*in|staying\s*in|living\s*in)\b\s+([a-zA-Z\s]{2,25}?)(?:[,\.\?!]|\s+(?:what|where|which|how|recommend|and|with|for|having|under)|$)/i,
-      /\b(?:in|at|around|near|visiting|trip\s*to|travel\s*to|going\s*to)\b\s+([a-zA-Z\s]{2,25}?)(?:[,\.\?!]|\s+(?:what|where|which|how|recommend|and|with|for|having|under|places|spots)|$)/i,
-      /\b(?:explore|discover|visit)\b\s+([a-zA-Z\s]{2,25}?)(?:[,\.\?!]|\s+(?:what|where|which|how|recommend|and|with|for|having|under|places|spots)|$)/i,
-      /\b(?:what\s*can\s*i\s*(?:do|experience|see)\s*in|what\s*to\s*(?:do|experience|see)\s*in|places\s*in|places\s*around|spots\s*in|spots\s*around)\b\s+([a-zA-Z\s]{2,25}?)(?:[,\.\?!]|\s+(?:what|where|which|how|recommend|and|with|for)|$)/i,
-      /\b(?:show\s*me\s*places\s*(?:in|around|near))\b\s+([a-zA-Z\s]{2,25}?)(?:[,\.\?!]|\s+(?:what|where|which|how|recommend|and|with|for)|$)/i
-    ];
-
-  for (const pat of destPatterns) {
-    const match = lower.match(pat);
-    if (match && match[1]) {
-      const candidate = cleanCityCandidate(match[1]);
-      if (candidate) {
-        extractedDest = candidate;
-        break;
-      }
-    }
-  }
-
-  // If assistant asked for city, and user gave a short answer (1-4 words) that is not purely budget/time:
-  if (!extractedDest && isAskingLocation) {
-    const wordCount = trimmed.split(/\s+/).length;
-    if (wordCount <= 4 && !extractedBudget && !extractedMinutes && !extractedCategory) {
-      const candidate = cleanCityCandidate(trimmed);
-      if (candidate) {
-        extractedDest = candidate;
-      }
-    }
-  }
-
-    // Standalone short location response (e.g. user typed "Thane", "Kyoto", "Bandra", "Goa")
-    if (!extractedDest && !extractedBudget && !extractedMinutes && !extractedCategory) {
-      const wordCount = trimmed.split(/\s+/).length;
-      if (wordCount <= 3 && /^[a-zA-Z\s,.'-]+$/.test(trimmed)) {
-        const candidate = cleanCityCandidate(trimmed);
-        if (candidate && !['hi', 'hello', 'hey', 'help', 'yes', 'no', 'ok', 'okay', 'thanks', 'thank you', 'recommend', 'recommend me', 'explore', 'discover', 'places'].includes(trimmed.toLowerCase())) {
-          extractedDest = candidate;
-        }
-      }
-    }
-  }
-
-  // 5. Merge with existing state (Preserves destination, time, budget, category)
+  // Merge state cleanly (preserves valid destination, time, budget, category)
   const mergedState = sanitizeAndMergeState(currentState, {
-    destination: extractedDest,
-    availableMinutes: extractedMinutes,
-    budget: extractedBudget,
-    category: extractedCategory,
-    preferences,
+    destination: aiResult.destination || null,
+    availableMinutes: explicitMinutes !== null ? explicitMinutes : (aiResult.availableMinutes || null),
+    budget: explicitBudget !== null ? explicitBudget : (aiResult.budget || null),
+    category: aiResult.category || null,
+    preferences: [],
     location: clientContext.location || {}
   });
 
-  // Check if we have any location context:
-  // 1) Destination name in merged state
-  // 2) GPS coordinates in state or clientContext
   const hasDestination = Boolean(mergedState.destination);
   const hasGps = Boolean(
     (mergedState.location?.latitude && mergedState.location?.longitude) ||
@@ -291,18 +401,15 @@ export const extractTravelIntentWithNvidia = async ({
   );
   const hasLocation = hasDestination || hasGps;
 
-  // Conversational Intent Classification:
-  // Distinguish pure conversation (greetings, gratitude, about, context sharing)
-  // from genuine recommendation triggers.
-
-  // 1. Pure Greetings ("Hi", "Hello", "Hey", "Good morning", etc.)
-  const greetingPattern = /^(hi|hello|hey|hiya|howdy|good\s+(morning|afternoon|evening|day)|greetings|sup|yo)[!.,\s]*$/i;
-  if (greetingPattern.test(trimmed)) {
+  // DECISION LOGIC:
+  // THE RECOMMENDATION ENGINE MUST ONLY RUN WHEN THERE IS CLEAR RECOMMENDATION INTENT!
+  // All other turns (conversation, context-sharing, clarification, questions) return conversational replies with NO recommendations.
+  if (aiResult.intent !== 'recommendation') {
     return {
       isTravel: true,
       updatedState: mergedState,
       action: 'conversational_reply',
-      reply: "Hi! What would you like to explore today? Tell me a city, or what kind of experiences you're looking for.",
+      reply: aiResult.reply || "I'm here to help you discover great local spots! Tell me where you are and what you'd like to experience.",
       destination: mergedState.destination,
       category: mergedState.category || 'local',
       availableMinutes: mergedState.availableMinutes,
@@ -313,134 +420,9 @@ export const extractTravelIntentWithNvidia = async ({
     };
   }
 
-  // 2. Gratitude / Acknowledgment ("Thanks", "Nice", "Okay", "That's helpful", etc.)
-  const ackPattern = /^(thanks|thank\s+you|thx|nice|okay|ok|cool|awesome|great|super|perfect|that's\s+helpful|thats\s+helpful|understood|got\s+it|sounds\s+good|wonderful)[!.,\s]*$/i;
-  if (ackPattern.test(trimmed)) {
-    return {
-      isTravel: true,
-      updatedState: mergedState,
-      action: 'conversational_reply',
-      reply: "You're welcome! Would you like more details on any of these spots, or another category or destination to explore?",
-      destination: mergedState.destination,
-      category: mergedState.category || 'local',
-      availableMinutes: mergedState.availableMinutes,
-      budget: mergedState.budget,
-      currency: mergedState.currency || 'INR',
-      searchKeywords: trimmed,
-      userSummary: trimmed
-    };
-  }
-
-  // 3. About Locora / Capabilities ("What can you do?", "Tell me about Locora", etc.)
-  const aboutPattern = /^(what\s+can\s+you\s+do|tell\s+me\s+about\s+locora|how\s+does\s+this\s+work|who\s+are\s+you|help(\s+me)?|what\s+is\s+locora)[?!.,\s]*$/i;
-  if (aboutPattern.test(trimmed)) {
-    return {
-      isTravel: true,
-      updatedState: mergedState,
-      action: 'conversational_reply',
-      reply: "I help you discover verified local, cultural, food, and nature experiences tailored to your available time and budget. Tell me where you are or what destination you'd like to explore!",
-      destination: mergedState.destination,
-      category: mergedState.category || 'local',
-      availableMinutes: mergedState.availableMinutes,
-      budget: mergedState.budget,
-      currency: mergedState.currency || 'INR',
-      searchKeywords: trimmed,
-      userSummary: trimmed
-    };
-  }
-
-  // 4. Context Sharing: "I'm new to <City>", "I am in <City>" without explicit recommendation request
-  const contextSharingPattern = /^(?:i\s*am\s*new\s*to|i'm\s*new\s*to|new\s*to|just\s+arrived\s+in)\s+([a-zA-Z\s]{2,25})[.?!]?$/i;
-  const contextSharingMatch = trimmed.match(contextSharingPattern);
-  if (contextSharingMatch) {
-    const city = cleanCityCandidate(contextSharingMatch[1]) || contextSharingMatch[1].trim();
-    mergedState.destination = city;
-    return {
-      isTravel: true,
-      updatedState: mergedState,
-      action: 'conversational_reply',
-      reply: `Welcome to ${city}! Are you looking for authentic local food, cultural heritage, nature spots, or something else to explore?`,
-      destination: city,
-      category: mergedState.category || 'local',
-      availableMinutes: mergedState.availableMinutes,
-      budget: mergedState.budget,
-      currency: mergedState.currency || 'INR',
-      searchKeywords: trimmed,
-      userSummary: trimmed
-    };
-  }
-
-  // 4.5 Conversational follow-up: "What should I explore?"
-  if (isExploreQuestion) {
-    const dest = mergedState.destination || clientContext.location?.city;
-    const destStr = dest ? ` in ${dest}` : '';
-    return {
-      isTravel: true,
-      updatedState: mergedState,
-      action: 'conversational_reply',
-      reply: `You could explore authentic local food, cultural heritage spots, scenic nature, or hidden gems${destStr}. Which of these sounds most interesting to you?`,
-      destination: mergedState.destination,
-      category: mergedState.category || 'local',
-      availableMinutes: mergedState.availableMinutes,
-      budget: mergedState.budget,
-      currency: mergedState.currency || 'INR',
-      searchKeywords: trimmed,
-      userSummary: trimmed
-    };
-  }
-
-  // 5. Genuine Recommendation Intent Detection
-  // Trigger recommendations when:
-  // - User asks for recommendations/places/spots/things to do
-  // - User specifies time or budget constraints
-  // - User specifies an explicit category (food, culture, nature, etc.)
-  // - Assistant previously asked what kind of experiences user is looking for
-  const hasRecommendationKeywords = /(?:recommend|suggestions?|where\s+should\s+i\s+go|what\s+(?:can|should)\s+i\s+(?:do|see|visit)|places\s+to\s+(?:visit|see|eat|go)|show\s+me\s+places|find\s+(?:places|spots|food|cafes|temples|restaurants)|things\s+to\s+do|must\s+visit|spots\s+(?:in|around|near)|places\s+(?:in|around|near))/i.test(lower);
-  const hasExplicitConstraints = extractedMinutes !== null || extractedBudget !== null;
-  const hasExplicitCategory = extractedCategory !== null;
-  const wasAskedPreferences = history.some(h => h.sender === 'assistant' && /(?:what would you like to explore|what kind of experiences|looking for)/i.test(h.text));
-
-  const isRecommendationIntent = hasRecommendationKeywords || hasExplicitConstraints || (hasExplicitCategory && (hasLocation || wasAskedPreferences));
-
-  // If user just named a city after assistant asked for city, ask what they want to explore in that city
-  if (!isRecommendationIntent && isAskingLocation && extractedDest) {
-    return {
-      isTravel: true,
-      updatedState: mergedState,
-      action: 'conversational_reply',
-      reply: `Got it, ${extractedDest}! What kind of experiences are you in the mood for — authentic local food, cultural heritage, nature, or hidden gems?`,
-      destination: extractedDest,
-      category: mergedState.category || 'local',
-      availableMinutes: mergedState.availableMinutes,
-      budget: mergedState.budget,
-      currency: mergedState.currency || 'INR',
-      searchKeywords: trimmed,
-      userSummary: trimmed
-    };
-  }
-
-  // If user just typed general conversational text that is not a recommendation request:
-  if (!isRecommendationIntent) {
-    const targetDest = mergedState.destination || clientContext.location?.city;
-    const destContextStr = targetDest ? ` in ${targetDest}` : '';
-    return {
-      isTravel: true,
-      updatedState: mergedState,
-      action: 'conversational_reply',
-      reply: `I can recommend verified spots${destContextStr}! What kind of places are you looking for, and do you have a specific time or budget?`,
-      destination: mergedState.destination,
-      category: mergedState.category || 'local',
-      availableMinutes: mergedState.availableMinutes,
-      budget: mergedState.budget,
-      currency: mergedState.currency || 'INR',
-      searchKeywords: trimmed,
-      userSummary: trimmed
-    };
-  }
-
-  // Decide recommendation action:
-  // If we have ANY location, proceed to recommend!
-  // Only ask for location if there is literally NO location anywhere.
+  // When recommendation intent IS confirmed:
+  // If we have location context, invoke the recommendation engine!
+  // If NO location context at all, ask for city/area.
   let action = 'recommend';
   let followUpQuestion = null;
 
@@ -454,6 +436,7 @@ export const extractTravelIntentWithNvidia = async ({
     updatedState: mergedState,
     action,
     followUpQuestion,
+    reply: followUpQuestion,
     destination: mergedState.destination,
     category: mergedState.category || 'local',
     availableMinutes: mergedState.availableMinutes,
