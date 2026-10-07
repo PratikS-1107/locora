@@ -1,5 +1,6 @@
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 import { formatDuration, getTodayLocalDateString } from '../utils/formatters';
+import { resolveFromCSC } from '../utils/geographicHierarchy';
 export { supabase, isSupabaseConfigured, formatDuration, getTodayLocalDateString };
 
 // --- UUID VALIDATION HELPER ---
@@ -690,6 +691,11 @@ export const normalizeTrip = (trip) => {
     destination: trip.destination || '',
     country: trip.country || '',
     country_code: trip.country_code || '',
+    state: trip.state || '',
+    state_code: trip.state_code || '',
+    city: trip.city || '',
+    latitude: trip.latitude !== undefined && trip.latitude !== null ? Number(trip.latitude) : null,
+    longitude: trip.longitude !== undefined && trip.longitude !== null ? Number(trip.longitude) : null,
     start_date: trip.start_date || '',
     end_date: trip.end_date || '',
     status,
@@ -2020,6 +2026,15 @@ export const resolveDestinationLocation = async (destinationName) => {
         source: 'Curated Registry'
       };
     }
+  }
+
+  // 0.5 Authoritative Global Geographic Hierarchy (Country-State-City)
+  const cscResult = resolveFromCSC(rawQ);
+  if (cscResult) {
+    return {
+      ...cscResult,
+      place_id: `csc-${(cscResult.country_code || 'geo').toLowerCase()}-${(cscResult.city || '').toLowerCase().replace(/\s+/g, '-')}`
+    };
   }
 
   // Create list of search candidates (e.g. for "Kyoto & Osaka", try ["Kyoto & Osaka", "Kyoto", "Osaka"])

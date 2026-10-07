@@ -602,7 +602,7 @@ const ItineraryView = () => {
                     {trip.destination && (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                         <MapPin size={15} style={{ color: '#34d399' }} />
-                        {trip.destination}{trip.country ? `, ${trip.country}` : ''}
+                        {trip.destination}{trip.country && !trip.destination.includes(trip.country) ? `, ${trip.country}` : ''}
                       </span>
                     )}
 

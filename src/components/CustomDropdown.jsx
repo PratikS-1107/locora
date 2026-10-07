@@ -16,12 +16,16 @@ const CustomDropdown = ({
   menuStyle = {},
   ariaLabel = 'Select option',
   searchable = false,
-  searchPlaceholder = 'Search...'
+  searchPlaceholder = 'Search...',
+  disabled = false,
+  emptyMessage = 'No options found'
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const dropdownRef = useRef(null);
   const searchInputRef = useRef(null);
+
+  const isEffectiveOpen = isOpen && !disabled;
 
   // Close when clicking outside and handle ESC
   useEffect(() => {
@@ -38,7 +42,7 @@ const CustomDropdown = ({
       }
     };
 
-    if (isOpen) {
+    if (isEffectiveOpen) {
       document.addEventListener('mousedown', handleClickOutside);
       document.addEventListener('keydown', handleKeyDown);
       if (searchable && searchInputRef.current) {
@@ -49,7 +53,7 @@ const CustomDropdown = ({
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isOpen, searchable]);
+  }, [isEffectiveOpen, searchable]);
 
   // Normalize options into { value, label, code, icon }
   const normalizedOptions = options.map((opt) => {
@@ -69,13 +73,16 @@ const CustomDropdown = ({
     label: value || placeholder
   };
 
+  const stripDiacritics = (str) =>
+    str ? String(str).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() : '';
+
   const filteredOptions = normalizedOptions.filter((opt) => {
     if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase().trim();
+    const q = stripDiacritics(searchQuery.trim());
     return (
-      (opt.label && opt.label.toLowerCase().includes(q)) ||
-      (opt.code && opt.code.toLowerCase().includes(q)) ||
-      (typeof opt.value === 'string' && opt.value.toLowerCase().includes(q))
+      (opt.label && stripDiacritics(opt.label).includes(q)) ||
+      (opt.code && stripDiacritics(opt.code).includes(q)) ||
+      (typeof opt.value === 'string' && stripDiacritics(opt.value).includes(q))
     );
   });
 
@@ -93,16 +100,22 @@ const CustomDropdown = ({
         display: fullWidth ? 'block' : 'inline-block',
         width: fullWidth ? '100%' : style.width || 'auto',
         userSelect: 'none',
-        zIndex: isOpen ? 100 : 'auto',
+        zIndex: isEffectiveOpen ? 100 : 'auto',
+        opacity: disabled ? 0.48 : 1,
+        pointerEvents: disabled ? 'none' : 'auto',
+        transition: 'opacity 0.2s ease',
         ...style
       }}
     >
       {/* Trigger Button */}
       <button
         type="button"
-        onClick={() => setIsOpen((prev) => !prev)}
+        disabled={disabled}
+        onClick={() => {
+          if (!disabled) setIsOpen((prev) => !prev);
+        }}
         aria-haspopup="listbox"
-        aria-expanded={isOpen}
+        aria-expanded={isEffectiveOpen}
         aria-label={ariaLabel}
         style={{
           display: 'flex',
@@ -112,16 +125,16 @@ const CustomDropdown = ({
           width: '100%',
           height: pill ? '46px' : '42px',
           padding: pill ? '0 18px 0 16px' : '0 14px',
-          backgroundColor: isOpen ? 'rgba(24, 34, 52, 0.95)' : 'rgba(20, 26, 38, 0.72)',
+          backgroundColor: isEffectiveOpen ? 'rgba(24, 34, 52, 0.95)' : 'rgba(20, 26, 38, 0.72)',
           backdropFilter: 'blur(16px)',
           WebkitBackdropFilter: 'blur(16px)',
-          border: isOpen ? '1px solid #0ea5e9' : '1px solid rgba(255, 255, 255, 0.12)',
+          border: isEffectiveOpen ? '1px solid #0ea5e9' : '1px solid rgba(255, 255, 255, 0.12)',
           borderRadius: pill ? '9999px' : '12px',
-          color: '#ffffff',
+          color: disabled ? 'rgba(255, 255, 255, 0.4)' : '#ffffff',
           fontSize: '0.875rem',
           fontWeight: 600,
-          cursor: 'pointer',
-          boxShadow: isOpen
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          boxShadow: isEffectiveOpen
             ? '0 0 0 3px rgba(14, 165, 233, 0.2), 0 8px 24px rgba(0, 0, 0, 0.4)'
             : '0 4px 16px rgba(0, 0, 0, 0.25)',
           transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
@@ -130,13 +143,13 @@ const CustomDropdown = ({
           ...buttonStyle
         }}
         onMouseEnter={(e) => {
-          if (!isOpen) {
+          if (!isEffectiveOpen && !disabled) {
             e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.25)';
             e.currentTarget.style.backgroundColor = 'rgba(28, 38, 58, 0.85)';
           }
         }}
         onMouseLeave={(e) => {
-          if (!isOpen) {
+          if (!isEffectiveOpen && !disabled) {
             e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)';
             e.currentTarget.style.backgroundColor = 'rgba(20, 26, 38, 0.72)';
           }
@@ -158,8 +171,8 @@ const CustomDropdown = ({
         <ChevronDown
           size={15}
           style={{
-            color: isOpen ? '#38bdf8' : 'rgba(226, 232, 240, 0.65)',
-            transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+            color: isEffectiveOpen ? '#38bdf8' : 'rgba(226, 232, 240, 0.65)',
+            transform: isEffectiveOpen ? 'rotate(180deg)' : 'rotate(0deg)',
             transition: 'transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), color 0.2s ease',
             marginLeft: '6px',
             flexShrink: 0
@@ -168,7 +181,7 @@ const CustomDropdown = ({
       </button>
 
       {/* Floating Glassmorphic Dropdown Popover */}
-      {isOpen && (
+      {isEffectiveOpen && (
         <div
           role="listbox"
           style={{
@@ -252,61 +265,75 @@ const CustomDropdown = ({
 
           {filteredOptions.length === 0 ? (
             <div style={{ padding: '14px 12px', textAlign: 'center', color: 'rgba(255, 255, 255, 0.45)', fontSize: '0.85rem' }}>
-              No countries found
+              {emptyMessage}
             </div>
           ) : (
-            filteredOptions.map((opt) => {
-              const isSelected = opt.value === value;
-              return (
-                <button
-                  key={String(opt.value)}
-                  type="button"
-                  role="option"
-                  aria-selected={isSelected}
-                  onClick={() => handleSelect(opt.value)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '12px',
-                    width: '100%',
-                    padding: '9px 12px',
-                    borderRadius: '10px',
-                    backgroundColor: isSelected ? 'rgba(14, 165, 233, 0.18)' : 'transparent',
-                    border: isSelected ? '1px solid rgba(14, 165, 233, 0.35)' : '1px solid transparent',
-                    color: isSelected ? '#38bdf8' : 'rgba(248, 250, 252, 0.9)',
-                    fontSize: '0.85rem',
-                    fontWeight: isSelected ? 700 : 500,
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                    boxSizing: 'border-box',
-                    whiteSpace: 'nowrap'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isSelected) {
-                      e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.08)';
-                      e.currentTarget.style.color = '#ffffff';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isSelected) {
-                      e.currentTarget.style.backgroundColor = 'transparent';
-                      e.currentTarget.style.color = 'rgba(248, 250, 252, 0.9)';
-                    }
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, overflow: 'hidden' }}>
-                    {opt.icon && <span style={{ flexShrink: 0 }}>{opt.icon}</span>}
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{opt.label}</span>
-                  </div>
+            <>
+              {filteredOptions.slice(0, 150).map((opt, index) => {
+                const isSelected = opt.value === value;
+                return (
+                  <button
+                    key={`${opt.value}-${opt.code || ''}-${index}`}
+                    type="button"
+                    role="option"
+                    aria-selected={isSelected}
+                    onClick={() => handleSelect(opt.value)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '12px',
+                      width: '100%',
+                      padding: '9px 12px',
+                      borderRadius: '10px',
+                      backgroundColor: isSelected ? 'rgba(14, 165, 233, 0.18)' : 'transparent',
+                      border: isSelected ? '1px solid rgba(14, 165, 233, 0.35)' : '1px solid transparent',
+                      color: isSelected ? '#38bdf8' : 'rgba(248, 250, 252, 0.9)',
+                      fontSize: '0.85rem',
+                      fontWeight: isSelected ? 700 : 500,
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                      boxSizing: 'border-box',
+                      whiteSpace: 'nowrap'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isSelected) {
+                        e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.08)';
+                        e.currentTarget.style.color = '#ffffff';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isSelected) {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                        e.currentTarget.style.color = 'rgba(248, 250, 252, 0.9)';
+                      }
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, overflow: 'hidden' }}>
+                      {opt.icon && <span style={{ flexShrink: 0 }}>{opt.icon}</span>}
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{opt.label}</span>
+                    </div>
 
-                  {isSelected && (
-                    <Check size={14} style={{ color: '#38bdf8', flexShrink: 0 }} />
-                  )}
-                </button>
-              );
-            })
+                    {isSelected && (
+                      <Check size={14} style={{ color: '#38bdf8', flexShrink: 0 }} />
+                    )}
+                  </button>
+                );
+              })}
+              {filteredOptions.length > 150 && (
+                <div style={{
+                  padding: '8px 12px',
+                  fontSize: '0.75rem',
+                  color: 'rgba(255, 255, 255, 0.45)',
+                  textAlign: 'center',
+                  borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+                  marginTop: '4px'
+                }}>
+                  Showing first 150 of {filteredOptions.length} results. Type to narrow search.
+                </div>
+              )}
+            </>
           )}
         </div>
       )}

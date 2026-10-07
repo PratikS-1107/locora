@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -9,14 +9,24 @@ import {
   updateTripDatesAndItinerary
 } from '../services/api';
 import { getTodayLocalDateString } from '../utils/formatters';
-import { COUNTRIES } from '../data/countries';
+import {
+  getAllCountries,
+  getStatesForCountry,
+  getCitiesForState,
+  getAdminTerminology,
+  formatStructuredDestination,
+  getCountryByCodeOrName
+} from '../utils/geographicHierarchy';
 import CustomDropdown from '../components/CustomDropdown';
 import {
   ArrowRight,
   Upload,
   X,
   CheckCircle2,
-  Globe
+  Globe,
+  MapPin,
+  Navigation,
+  ChevronRight
 } from 'lucide-react';
 
 const CreateTrip = () => {
@@ -29,8 +39,13 @@ const CreateTrip = () => {
 
   const [tripName, setTripName] = useState('');
   const [destination, setDestination] = useState('');
-  const [country, setCountry] = useState('');
-  const [countryCode, setCountryCode] = useState('');
+
+  // Structured Geographic Hierarchy state
+  const [selectedCountry, setSelectedCountry] = useState(null); // { value, label, code, name }
+  const [selectedState, setSelectedState] = useState(null); // { value, label, code, name }
+  const [selectedCity, setSelectedCity] = useState(null); // { value, label, name, latitude, longitude }
+  const [selectedCoords, setSelectedCoords] = useState(null); // { latitude, longitude }
+
   // Preserved state variables per downstream compatibility requirements
   // eslint-disable-next-line no-unused-vars
   const [placeId, setPlaceId] = useState('');
@@ -50,7 +65,85 @@ const CreateTrip = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
-  // Load existing trip details if in Edit mode
+  // 1. Memoized list of all worldwide countries
+  const countryOptions = useMemo(() => {
+    return getAllCountries();
+  }, []);
+
+  // 2. Memoized list of first-level administrative regions for selected country
+  const stateOptions = useMemo(() => {
+    if (!selectedCountry?.code) return [];
+    return getStatesForCountry(selectedCountry.code);
+  }, [selectedCountry]);
+
+  // 3. Memoized list of second-level administrative localities for selected region
+  const cityOptions = useMemo(() => {
+    if (!selectedCountry?.code || !selectedState) return [];
+    return getCitiesForState(selectedCountry.code, selectedState.code || selectedState.value, selectedState.name);
+  }, [selectedCountry, selectedState]);
+
+  // 4. Adaptive administrative terminology based on country
+  const adminLabels = useMemo(() => {
+    return getAdminTerminology(selectedCountry?.code);
+  }, [selectedCountry]);
+
+  // Cascading Selection Handler 1: Country Selection
+  const handleSelectCountry = (isoCode) => {
+    const found = countryOptions.find((c) => c.value === isoCode || c.code === isoCode);
+    if (!found) return;
+
+    // Requirement 16: Changing country clears previously selected state and district
+    setSelectedCountry(found);
+    setSelectedState(null);
+    setSelectedCity(null);
+    setSelectedCoords(null);
+    setDestination('');
+    setFormattedAddress('');
+    setPlaceId('');
+    setErrorMsg('');
+  };
+
+  // Cascading Selection Handler 2: State / Region Selection
+  const handleSelectState = (stateVal) => {
+    if (!selectedCountry) return;
+    const found = stateOptions.find((s) => s.value === stateVal || s.code === stateVal || s.name === stateVal);
+    if (!found) return;
+
+    // Requirement 17: Changing state clears previously selected district
+    setSelectedState(found);
+    setSelectedCity(null);
+    setSelectedCoords(null);
+    setDestination('');
+    setFormattedAddress('');
+    setErrorMsg('');
+  };
+
+  // Cascading Selection Handler 3: District / Locality Selection
+  const handleSelectCity = (cityName) => {
+    if (!selectedCountry || !selectedState) return;
+    const found = cityOptions.find((c) => c.value === cityName || c.name === cityName);
+    const cityObj = found || { name: cityName };
+
+    setSelectedCity(cityObj);
+
+    const lat = Number(cityObj.latitude ?? selectedState.latitude ?? selectedCountry.latitude);
+    const lng = Number(cityObj.longitude ?? selectedState.longitude ?? selectedCountry.longitude);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      setSelectedCoords({ latitude: lat, longitude: lng });
+    }
+
+    // Format authoritative destination name: e.g. "Thane, Maharashtra, India"
+    const formatted = formatStructuredDestination(
+      cityObj.name,
+      selectedState.name,
+      selectedCountry.name
+    );
+    setDestination(formatted);
+    setFormattedAddress(formatted);
+    setErrorMsg('');
+  };
+
+  // Load existing trip details if in Edit mode and pre-populate hierarchy
   useEffect(() => {
     if (isEditMode && id) {
       getTripById(id).then(({ data }) => {
@@ -58,28 +151,63 @@ const CreateTrip = () => {
           setTripName(data.name || data.title || '');
           const existingDest = data.destination || data.city || '';
           setDestination(existingDest);
-          setCountry(data.country || existingDest || '');
-          setCountryCode(data.country_code || data.countryCode || '');
           setFormattedAddress(existingDest);
           setStartDate(data.start_date || '');
           setEndDate(data.end_date || '');
           if (data.budget !== undefined) setBudget(data.budget);
           setDescription(data.description || '');
           setCoverPhoto(data.cover_image || data.cover_image_url || data.coverPhoto || '');
+
+          // Attempt to pre-populate geographic hierarchy from existing trip details
+          const cCode = data.country_code || data.countryCode;
+          const countryMatch = getCountryByCodeOrName(cCode || data.country);
+          if (countryMatch) {
+            const countryItem = {
+              value: countryMatch.isoCode,
+              label: countryMatch.name,
+              code: countryMatch.isoCode,
+              name: countryMatch.name,
+              latitude: countryMatch.latitude ? Number(countryMatch.latitude) : null,
+              longitude: countryMatch.longitude ? Number(countryMatch.longitude) : null
+            };
+            setSelectedCountry(countryItem);
+
+            const states = getStatesForCountry(countryMatch.isoCode);
+            const parts = existingDest.split(',').map((s) => s.trim()).filter(Boolean);
+            let stateMatch = null;
+            let cityMatchName = null;
+
+            if (parts.length >= 3) {
+              cityMatchName = parts[0];
+              const stateQuery = parts[1].toLowerCase();
+              stateMatch = states.find((s) => s.name.toLowerCase() === stateQuery || stateQuery.includes(s.name.toLowerCase()));
+            } else if (parts.length === 2) {
+              cityMatchName = parts[0];
+              stateMatch = states.find((s) => s.name.toLowerCase() === parts[0].toLowerCase());
+            }
+
+            if (stateMatch) {
+              setSelectedState(stateMatch);
+              if (cityMatchName) {
+                const cities = getCitiesForState(countryMatch.isoCode, stateMatch.code || stateMatch.value, stateMatch.name);
+                const cityMatch = cities.find((c) => c.name.toLowerCase() === cityMatchName.toLowerCase());
+                if (cityMatch) {
+                  setSelectedCity(cityMatch);
+                  const lat = Number(cityMatch.latitude ?? stateMatch.latitude ?? countryMatch.latitude);
+                  const lng = Number(cityMatch.longitude ?? stateMatch.longitude ?? countryMatch.longitude);
+                  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+                    setSelectedCoords({ latitude: lat, longitude: lng });
+                  }
+                } else {
+                  setSelectedCity({ name: cityMatchName, value: cityMatchName, label: cityMatchName });
+                }
+              }
+            }
+          }
         }
       });
     }
   }, [id, isEditMode]);
-
-  const handleSelectCountry = (countryName) => {
-    const found = COUNTRIES.find((c) => c.name === countryName);
-    setDestination(countryName);
-    setCountry(countryName);
-    setCountryCode(found ? found.code : '');
-    setFormattedAddress(countryName);
-    setPlaceId('');
-    setErrorMsg('');
-  };
 
   const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
@@ -118,8 +246,18 @@ const CreateTrip = () => {
       return;
     }
 
-    if (!destination.trim()) {
-      setErrorMsg('Destination is required. Please select a country.');
+    if (!selectedCountry) {
+      setErrorMsg('Country selection is required. Please select a country first.');
+      return;
+    }
+
+    if (!selectedState) {
+      setErrorMsg(`Please select a ${adminLabels.level1.toLowerCase()}.`);
+      return;
+    }
+
+    if (!selectedCity || !destination.trim()) {
+      setErrorMsg(`Please select a ${adminLabels.level2.toLowerCase()}.`);
       return;
     }
 
@@ -159,8 +297,13 @@ const CreateTrip = () => {
         const { error } = await updateTrip(id, {
           title: tripName.trim(),
           destination: destination.trim(),
-          country: country.trim(),
-          country_code: countryCode.trim(),
+          country: selectedCountry.name.trim(),
+          country_code: selectedCountry.code.trim(),
+          state: selectedState?.name?.trim() || '',
+          state_code: selectedState?.code?.trim() || '',
+          city: selectedCity?.name?.trim() || '',
+          latitude: selectedCoords?.latitude ?? null,
+          longitude: selectedCoords?.longitude ?? null,
           budget: Number(budget) || 0,
           description: description.trim(),
           cover_image_url: coverPhoto || null
@@ -183,8 +326,13 @@ const CreateTrip = () => {
           userId: user.id,
           title: tripName.trim(),
           destination: destination.trim(),
-          country: country.trim(),
-          country_code: countryCode.trim(),
+          country: selectedCountry.name.trim(),
+          country_code: selectedCountry.code.trim(),
+          state: selectedState?.name?.trim() || '',
+          state_code: selectedState?.code?.trim() || '',
+          city: selectedCity?.name?.trim() || '',
+          latitude: selectedCoords?.latitude ?? null,
+          longitude: selectedCoords?.longitude ?? null,
           startDate,
           endDate,
           budget: Number(budget) || 0,
@@ -320,59 +468,182 @@ const CreateTrip = () => {
             />
           </div>
 
-          {/* Destination Selection with Country Dropdown */}
-          <div className="form-group" style={{ marginBottom: '18px' }}>
-            <label className="form-label" style={{ fontWeight: 600, fontSize: '0.825rem' }}>
-              Destination *
-            </label>
-
-            <CustomDropdown
-              value={destination}
-              onChange={handleSelectCountry}
-              options={COUNTRIES.map((c) => ({
-                value: c.name,
-                label: c.name,
-                code: c.code
-              }))}
-              placeholder="Select a country..."
-              icon={<Globe size={16} style={{ color: 'var(--accent-cyan, #38bdf8)' }} />}
-              pill={false}
-              fullWidth={true}
-              align="left"
-              searchable={true}
-              searchPlaceholder="Search countries (e.g. Japan, UAE, France)..."
-              buttonStyle={{
-                height: '44px',
-                borderRadius: 'var(--radius-md, 12px)',
-                backgroundColor: 'var(--bg-card, rgba(20, 26, 38, 0.72))',
-                border: '1px solid var(--border-subtle, rgba(255, 255, 255, 0.12))',
-                fontSize: '0.9rem',
-                fontWeight: 500,
-                color: destination ? 'var(--text-primary, #ffffff)' : 'var(--text-muted, rgba(255, 255, 255, 0.45))'
-              }}
-              menuStyle={{
-                maxHeight: '300px',
-                width: '100%',
-                maxWidth: '100%'
-              }}
-            />
-
-            {destination && (
+          {/* Dependent Geographic Hierarchy Destination Selection */}
+          <div
+            className="form-group"
+            style={{
+              marginBottom: '20px',
+              padding: '18px 20px',
+              borderRadius: '16px',
+              backgroundColor: 'rgba(11, 16, 28, 0.65)',
+              border: '1px solid rgba(255, 255, 255, 0.08)'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', flexWrap: 'wrap', gap: '6px' }}>
+              <label className="form-label" style={{ margin: 0, fontWeight: 700, fontSize: '0.85rem', color: '#ffffff' }}>
+                Destination Hierarchy *
+              </label>
               <div style={{
-                marginTop: '8px',
+                fontSize: '0.72rem',
+                color: 'rgba(226, 232, 240, 0.6)',
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '6px',
-                padding: '4px 10px',
-                borderRadius: 'var(--radius-sm, 6px)',
-                backgroundColor: 'rgba(14, 165, 233, 0.1)',
-                border: '1px solid rgba(14, 165, 233, 0.3)',
-                fontSize: '0.775rem',
-                color: 'var(--accent-cyan, #38bdf8)'
+                gap: '4px'
               }}>
-                <Globe size={12} />
-                <span style={{ fontWeight: 600 }}>{destination}</span>
-                {countryCode && <span>· {countryCode}</span>}
+                <span style={{ color: selectedCountry ? '#38bdf8' : 'inherit', fontWeight: selectedCountry ? 600 : 400 }}>Country</span>
+                <ChevronRight size={11} style={{ opacity: 0.5 }} />
+                <span style={{ color: selectedState ? '#38bdf8' : 'inherit', fontWeight: selectedState ? 600 : 400 }}>{adminLabels.level1}</span>
+                <ChevronRight size={11} style={{ opacity: 0.5 }} />
+                <span style={{ color: selectedCity ? '#34d399' : 'inherit', fontWeight: selectedCity ? 600 : 400 }}>{adminLabels.level2}</span>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {/* Level 1: Country Selection */}
+              <div>
+                <div style={{ fontSize: '0.76rem', fontWeight: 600, color: 'rgba(226, 232, 240, 0.85)', marginBottom: '6px' }}>
+                  1. Country *
+                </div>
+                <CustomDropdown
+                  value={selectedCountry?.value || ''}
+                  onChange={handleSelectCountry}
+                  options={countryOptions}
+                  placeholder="Select a country..."
+                  icon={<Globe size={16} style={{ color: 'var(--accent-cyan, #38bdf8)' }} />}
+                  pill={false}
+                  fullWidth={true}
+                  align="left"
+                  searchable={true}
+                  searchPlaceholder="Search countries (e.g. India, Japan, United States)..."
+                  emptyMessage="No countries found"
+                  buttonStyle={{
+                    height: '44px',
+                    borderRadius: 'var(--radius-md, 12px)',
+                    backgroundColor: 'var(--bg-card, rgba(20, 26, 38, 0.72))',
+                    border: '1px solid var(--border-subtle, rgba(255, 255, 255, 0.12))',
+                    fontSize: '0.9rem',
+                    fontWeight: 500,
+                    color: selectedCountry ? '#ffffff' : 'rgba(255, 255, 255, 0.45)'
+                  }}
+                  menuStyle={{
+                    maxHeight: '300px',
+                    width: '100%',
+                    maxWidth: '100%'
+                  }}
+                />
+              </div>
+
+              {/* Level 2: State / Province / Region Selection (Disabled until country is chosen) */}
+              <div>
+                <div style={{ fontSize: '0.76rem', fontWeight: 600, color: 'rgba(226, 232, 240, 0.85)', marginBottom: '6px' }}>
+                  2. {adminLabels.level1} *
+                  {!selectedCountry && (
+                    <span style={{ fontSize: '0.7rem', color: 'rgba(255, 255, 255, 0.4)', marginLeft: '6px', fontWeight: 400 }}>
+                      (Disabled · Select Country First)
+                    </span>
+                  )}
+                </div>
+                <CustomDropdown
+                  value={selectedState?.value || ''}
+                  onChange={handleSelectState}
+                  options={stateOptions}
+                  disabled={!selectedCountry}
+                  placeholder={selectedCountry ? adminLabels.level1Placeholder : 'Disabled — select a country first'}
+                  icon={<MapPin size={16} style={{ color: selectedCountry ? '#38bdf8' : 'rgba(255, 255, 255, 0.3)' }} />}
+                  pill={false}
+                  fullWidth={true}
+                  align="left"
+                  searchable={true}
+                  searchPlaceholder={selectedCountry ? `Search ${adminLabels.level1.toLowerCase()}...` : 'Disabled'}
+                  emptyMessage={`No ${adminLabels.level1.toLowerCase()} found`}
+                  buttonStyle={{
+                    height: '44px',
+                    borderRadius: 'var(--radius-md, 12px)',
+                    backgroundColor: 'var(--bg-card, rgba(20, 26, 38, 0.72))',
+                    border: '1px solid var(--border-subtle, rgba(255, 255, 255, 0.12))',
+                    fontSize: '0.9rem',
+                    fontWeight: 500,
+                    color: selectedState ? '#ffffff' : 'rgba(255, 255, 255, 0.45)'
+                  }}
+                  menuStyle={{
+                    maxHeight: '300px',
+                    width: '100%',
+                    maxWidth: '100%'
+                  }}
+                />
+              </div>
+
+              {/* Level 3: District / County / Locality Selection (Disabled until state is chosen) */}
+              <div>
+                <div style={{ fontSize: '0.76rem', fontWeight: 600, color: 'rgba(226, 232, 240, 0.85)', marginBottom: '6px' }}>
+                  3. {adminLabels.level2} *
+                  {(!selectedCountry || !selectedState) && (
+                    <span style={{ fontSize: '0.7rem', color: 'rgba(255, 255, 255, 0.4)', marginLeft: '6px', fontWeight: 400 }}>
+                      (Disabled · Select {selectedCountry ? adminLabels.level1 : 'Country'} First)
+                    </span>
+                  )}
+                </div>
+                <CustomDropdown
+                  value={selectedCity?.value || ''}
+                  onChange={handleSelectCity}
+                  options={cityOptions}
+                  disabled={!selectedCountry || !selectedState}
+                  placeholder={selectedState ? adminLabels.level2Placeholder : `Disabled — select a ${adminLabels.level1.toLowerCase()} first`}
+                  icon={<Navigation size={16} style={{ color: selectedState ? '#34d399' : 'rgba(255, 255, 255, 0.3)' }} />}
+                  pill={false}
+                  fullWidth={true}
+                  align="left"
+                  searchable={true}
+                  searchPlaceholder={selectedState ? `Search ${adminLabels.level2.toLowerCase()}...` : 'Disabled'}
+                  emptyMessage={`No ${adminLabels.level2.toLowerCase()} found`}
+                  buttonStyle={{
+                    height: '44px',
+                    borderRadius: 'var(--radius-md, 12px)',
+                    backgroundColor: 'var(--bg-card, rgba(20, 26, 38, 0.72))',
+                    border: '1px solid var(--border-subtle, rgba(255, 255, 255, 0.12))',
+                    fontSize: '0.9rem',
+                    fontWeight: 500,
+                    color: selectedCity ? '#ffffff' : 'rgba(255, 255, 255, 0.45)'
+                  }}
+                  menuStyle={{
+                    maxHeight: '300px',
+                    width: '100%',
+                    maxWidth: '100%'
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Authoritative Structured Destination Summary Badge */}
+            {destination && (
+              <div
+                style={{
+                  marginTop: '16px',
+                  padding: '12px 16px',
+                  borderRadius: '12px',
+                  backgroundColor: 'rgba(14, 165, 233, 0.08)',
+                  border: '1px solid rgba(14, 165, 233, 0.3)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '12px'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                  <CheckCircle2 size={18} style={{ color: '#38bdf8', flexShrink: 0 }} />
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'rgba(226, 232, 240, 0.65)', fontWeight: 700 }}>
+                      Authoritative Destination
+                    </div>
+                    <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#ffffff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {destination}
+                    </div>
+                    <div style={{ fontSize: '0.74rem', color: '#38bdf8', marginTop: '2px' }}>
+                      {selectedCountry?.name} ({selectedCountry?.code}) · {selectedState?.name} {selectedState?.code && `(${selectedState.code})`} · {selectedCity?.name}
+                      {selectedCoords && ` · ${selectedCoords.latitude.toFixed(4)}°, ${selectedCoords.longitude.toFixed(4)}°`}
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>

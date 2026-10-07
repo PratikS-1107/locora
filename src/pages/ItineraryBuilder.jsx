@@ -1044,7 +1044,7 @@ const ItineraryBuilder = () => {
                   }}
                 >
                   <MapPin size={14} style={{ color: 'var(--accent-cyan)' }} />
-                  <span style={{ fontWeight: 600 }}>{trip.destination}{trip.country ? `, ${trip.country}` : ''}</span>
+                  <span style={{ fontWeight: 600 }}>{trip.destination}{trip.country && !trip.destination.includes(trip.country) ? `, ${trip.country}` : ''}</span>
                 </div>
               )}
             </div>
